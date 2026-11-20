@@ -10,3 +10,6 @@ config.toml
 *.wav
 *.mp3
 dist/
+
+# Downloaded speech models and voice data
+/models/
