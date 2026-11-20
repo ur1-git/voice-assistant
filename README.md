@@ -109,9 +109,7 @@ The default detection threshold is 0.5. If you hear too many false wakes, raise 
 
 ## Agent access
 
-The first release covers questions and read-only project inspection. Codex runs with `--sandbox read-only`, and Claude Code runs with its tools disabled. The CLI processes run as your Linux user.
-
-Approved project changes are later work. Before enabling write actions, define which actions require approval and enforce the rule in the execution layer. For a destructive or risky action, show the exact change and target and require two explicit confirmations. A denial or missing confirmation cancels the action. The assistant should never have sudo access.
+Codex defaults to read-only access. To enable full access without approval prompts, set `codex_full_access = true` under `[agent]` in your local `config.toml` and restart the app. Codex can then read and modify files and run commands anywhere your Linux account has permission. The working directory is where it starts. Claude Code runs with its tools disabled.
 
 ## Layout and tests
 

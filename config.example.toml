@@ -1,6 +1,7 @@
 # Copy this to config.toml to customize.
 [agent]
 provider = "codex" # "codex" or "claude"
+codex_full_access = false # true runs Codex without sandboxing or approval prompts.
 working_directory = "." # relative to this config file, or absolute
 max_history_turns = 8
 max_history_chars = 4000 # Prior conversation only. Set to 0 for a fresh start on every turn.

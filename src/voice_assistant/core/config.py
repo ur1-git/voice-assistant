@@ -11,6 +11,7 @@ class AgentConfig:
     max_history_turns: int = 8
     timeout_seconds: int = 180
     max_history_chars: int = 4000
+    codex_full_access: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,10 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
         raise ValueError("History must be >= 0 and timeout >= 1")
     if type(history_chars) is not int or history_chars < 0:
         raise ValueError("agent.max_history_chars must be a nonnegative integer")
-    return AgentConfig(provider, directory, turns, timeout, history_chars)
+    codex_full_access = data.get("codex_full_access", False)
+    if type(codex_full_access) is not bool:
+        raise ValueError("agent.codex_full_access must be true or false")
+    return AgentConfig(provider, directory, turns, timeout, history_chars, codex_full_access)
 
 
 def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) -> VoiceConfig:

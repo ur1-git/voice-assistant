@@ -1,13 +1,21 @@
-"""Codex CLI JSON event streaming, executed with read-only sandbox."""
+"""Run Codex and extract its final reply from JSON events."""
+from dataclasses import dataclass
 import json
 from .base import Agent, AgentError
 
 
+@dataclass
 class CodexAgent(Agent):
+    full_access: bool = False
+
     def ask(self, prompt: str) -> str:
         # '-' feeds stdin; no shell invocation or command interpolation.
+        permissions = (
+            ["--dangerously-bypass-approvals-and-sandbox"]
+            if self.full_access else ["--sandbox", "read-only"]
+        )
         output = self.run_process([
-            self.executable, "exec", "--json", "--sandbox", "read-only",
+            self.executable, "exec", "--json", *permissions,
             "--skip-git-repo-check", "-",
         ], stdin=prompt)
         messages = []

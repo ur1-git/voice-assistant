@@ -127,8 +127,14 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
                 raise ValueError(f"Whisper model not found: {voice_config.model}. Set stt.model in the config.")
         config = voice_config.agent if voice_config is not None else load_config(args.config)
         provider = args.agent or config.provider
-        agent_cls = CodexAgent if provider == "codex" else ClaudeAgent
-        agent = agent_cls(executables.get(provider, provider), config.working_directory, config.timeout_seconds)
+        executable = executables.get(provider, provider)
+        if provider == "codex":
+            agent = CodexAgent(
+                executable, config.working_directory, config.timeout_seconds,
+                full_access=config.codex_full_access,
+            )
+        else:
+            agent = ClaudeAgent(executable, config.working_directory, config.timeout_seconds)
         agent.ensure_available()
         pipeline = Pipeline(agent, config.max_history_turns, max_history_chars=config.max_history_chars)
         if voice_config is not None:
