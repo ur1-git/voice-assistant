@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import wave
 
-from .pipewire import RecordingError
+from .pipewire import RecordingError, pcm_capture
 
 
 class WakeWordDetector:
@@ -34,20 +34,12 @@ class WakeWordDetector:
 
     def wait(self, device: str) -> None:
         self.model.reset()
-        command = [
-            "pw-record", f"--target={device}", "--rate=16000",
-            "--channels=1", "--format=s16", "--raw", "-",
-        ]
-        with subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE) as recorder:
-            try:
-                while len(chunk := recorder.stdout.read(2560)) == 2560:
-                    samples = self.frombuffer(chunk, dtype="<i2")
-                    if max(self.model.predict(samples).values()) >= self.threshold:
-                        return
-                raise RecordingError("PipeWire stopped while listening for the wake word")
-            finally:
-                if recorder.poll() is None:
-                    recorder.kill()
+        with pcm_capture(device) as stream:
+            while len(chunk := stream.read(2560)) == 2560:
+                samples = self.frombuffer(chunk, dtype="<i2")
+                if max(self.model.predict(samples).values()) >= self.threshold:
+                    return
+            raise RecordingError("PipeWire stopped while listening for the wake word")
 
 
 def play_chime(path: Path, *, waking: bool) -> None:

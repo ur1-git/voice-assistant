@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from .agents.base import AgentError
 from .agents.claude import ClaudeAgent
 from .agents.codex import CodexAgent
+from .audio.end_of_speech import EndOfSpeechRecorder
 from .audio.pipewire import RecordingError, record_wav
 from .audio.wakeword import WakeWordDetector, play_chime
 from .core.config import VoiceConfig, load_config, load_voice_config
@@ -20,6 +21,10 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
     speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
     detector = (
         WakeWordDetector(config.wake_model, config.wake_threshold)
+        if config.wake_model is not None else None
+    )
+    automatic_recorder = (
+        EndOfSpeechRecorder(config.wake_model.with_name("silero_vad.onnx"), config.end_silence_ms)
         if config.wake_model is not None else None
     )
     while True:
@@ -43,10 +48,18 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 chime = audio.with_name("chime.wav")
                 if detector:
                     play_chime(chime, waking=True)
-                print(f"Recording for up to {config.max_record_seconds}s. Press Ctrl+C to stop.", flush=True)
-                record_wav(audio, device=config.device, max_seconds=config.max_record_seconds)
-                if detector:
+                if automatic_recorder:
+                    print("Recording. Pause to send or press Ctrl+C to send now.", flush=True)
+                    captured = automatic_recorder.record(
+                        audio, device=config.device, max_seconds=config.max_record_seconds,
+                    )
                     play_chime(chime, waking=False)
+                    if not captured:
+                        print("No speech detected.\n", flush=True)
+                        continue
+                else:
+                    print(f"Recording for up to {config.max_record_seconds}s. Press Ctrl+C to stop.", flush=True)
+                    record_wav(audio, device=config.device, max_seconds=config.max_record_seconds)
                 print("\nTranscribing…", flush=True)
                 transcript = transcribe(
                     audio, model=config.model, language=config.language,

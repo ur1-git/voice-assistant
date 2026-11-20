@@ -1,4 +1,5 @@
 """Record a Whisper-compatible WAV using the desktop's PipeWire session."""
+from contextlib import contextmanager
 from pathlib import Path
 import signal
 import subprocess
@@ -7,6 +8,22 @@ import wave
 
 class RecordingError(RuntimeError):
     """PipeWire failed to capture a usable recording."""
+
+
+@contextmanager
+def pcm_capture(device: str):
+    command = [
+        "pw-record", f"--target={device}", "--rate=16000",
+        "--channels=1", "--format=s16", "--raw", "-",
+    ]
+    with subprocess.Popen(
+        command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, start_new_session=True,
+    ) as recorder:
+        try:
+            yield recorder.stdout
+        finally:
+            if recorder.poll() is None:
+                recorder.kill()
 
 
 def record_wav(path: Path, *, device: str, max_seconds: int) -> None:

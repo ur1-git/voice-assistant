@@ -9,6 +9,7 @@ timeout_seconds = 180
 [audio]
 device = "auto" # default PipeWire source, or a source node name or serial
 max_record_seconds = 30
+end_silence_ms = 1000 # Quiet time after speech before sending in wake mode.
 
 [stt]
 backend = "whisper_cpp"

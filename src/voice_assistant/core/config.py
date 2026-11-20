@@ -32,6 +32,7 @@ class VoiceConfig:
     kokoro: KokoroConfig | None = None
     wake_model: Path | None = None
     wake_threshold: float = 0.5
+    end_silence_ms: int = 1000
 
 
 def _read_config(path: Path) -> dict:
@@ -116,6 +117,7 @@ def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) ->
 
     wake_model = None
     wake_threshold = 0.5
+    end_silence_ms = 1000
     if wake:
         wakeword = _table(raw, "wakeword")
         model_path = wakeword.get("model", "models/openwakeword/hey_jarvis_v0.1.onnx")
@@ -125,6 +127,9 @@ def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) ->
         if type(wake_threshold) not in (int, float) or not 0 < wake_threshold <= 1:
             raise ValueError("wakeword.threshold must be greater than 0 and at most 1")
         wake_model = _resolve_path(model_path, path)
+        end_silence_ms = audio.get("end_silence_ms", 1000)
+        if type(end_silence_ms) is not int or end_silence_ms < 1:
+            raise ValueError("audio.end_silence_ms must be a positive integer")
 
     return VoiceConfig(
         agent=_agent_config(raw, path),
@@ -136,4 +141,5 @@ def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) ->
         kokoro=kokoro,
         wake_model=wake_model,
         wake_threshold=wake_threshold,
+        end_silence_ms=end_silence_ms,
     )
