@@ -77,6 +77,8 @@ voice-assistant voice --speak
 
 The app prints each reply before speaking it. Ctrl+C during synthesis or playback returns to the recording prompt. The portable bundle currently uses text replies.
 
+With Codex and spoken replies enabled, Kokoro also reads short progress updates from the current request. The updates use local speech synthesis and stay out of the conversation history.
+
 ## Wake phrase
 
 With the project venv active, install the ONNX dependencies and download the pretrained models:

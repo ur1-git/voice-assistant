@@ -1,4 +1,7 @@
 """Text-to-agent-to-text stage; audio stages will wrap this."""
+from collections.abc import Callable
+
+from ..agents.codex import CodexAgent
 from .session import Session
 
 
@@ -7,10 +10,17 @@ class Pipeline:
         self.agent = agent
         self.session = Session(max_history_turns, max_history_chars=max_history_chars)
 
-    def respond(self, text: str, *, spoken: bool = False) -> str:
+    def respond(
+        self, text: str, *, spoken: bool = False,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> str:
         text = text.strip()
         if not text:
             raise ValueError("Message cannot be empty")
-        response = self.agent.ask(self.session.prompt(text, spoken=spoken))
+        prompt = self.session.prompt(text, spoken=spoken)
+        if on_progress is not None and isinstance(self.agent, CodexAgent):
+            response = self.agent.ask(prompt, on_progress=on_progress)
+        else:
+            response = self.agent.ask(prompt)
         self.session.remember(text, response)
         return response

@@ -19,6 +19,14 @@ from .tts.kokoro import KokoroSpeaker, SpeechError
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
     speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
+
+    def announce_progress(message: str) -> None:
+        print(f"Progress> {message}", flush=True)
+        try:
+            speaker.speak(message)
+        except (SpeechError, OSError) as exc:
+            print(f"Progress playback failed: {exc}", file=sys.stderr)
+
     detector = (
         WakeWordDetector(config.wake_model, config.wake_threshold)
         if config.wake_model is not None else None
@@ -70,7 +78,10 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
-            reply = pipeline.respond(transcript, spoken=speaker is not None)
+            reply = pipeline.respond(
+                transcript, spoken=speaker is not None,
+                on_progress=announce_progress if speaker is not None else None,
+            )
             print("Assistant> " + reply + "\n", flush=True)
             if speaker:
                 print("Speaking… Press Ctrl+C to stop.", flush=True)
