@@ -1,0 +1,22 @@
+# Copy this to config.toml to customize.
+[agent]
+provider = "codex" # "codex" or "claude"
+working_directory = "." # relative to this config file, or absolute
+max_history_turns = 8
+timeout_seconds = 180
+
+[audio]
+device = "auto" # default PipeWire source, or a source node name or serial
+max_record_seconds = 30
+
+[stt]
+backend = "whisper_cpp"
+model = "models/ggml-small.bin" # relative to this config file, or absolute
+language = "auto" # or a language code such as "en" or "es"
+timeout_seconds = 90
+
+[tts]
+backend = "kokoro" # future phase
+
+[wakeword]
+backend = "openwakeword" # future phase
