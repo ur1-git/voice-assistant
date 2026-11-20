@@ -77,12 +77,30 @@ voice-assistant voice --speak
 
 The app prints each reply before speaking it. Ctrl+C during synthesis or playback returns to the recording prompt. The portable bundle currently uses text replies.
 
+## Wake phrase
+
+With the project venv active, install the ONNX dependencies and download the pretrained models:
+
+```bash
+python -m pip install numpy onnxruntime requests scipy scikit-learn tqdm
+python -m pip install --no-deps openwakeword==0.6.0
+mkdir -p models/openwakeword
+for model in hey_jarvis_v0.1 embedding_model melspectrogram; do
+    curl -fL "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/$model.onnx" \
+        -o "models/openwakeword/$model.onnx" || break
+done
+```
+
+Use `voice-assistant voice --wake --speak` and say “Hey Jarvis.” Wait for the rising chime before speaking. Press Ctrl+C to send the recording. A falling chime marks the end of capture. After the reply, the app listens for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
+
+The default detection threshold is 0.5. If you hear too many false wakes, raise `wakeword.threshold` in `config.toml`. If it misses your phrase, try lowering it and check for false wakes. Listening and detection run locally. OpenWakeWord 0.6.0 declares a TensorFlow Lite dependency on Linux, so the ONNX setup above installs its dependencies explicitly.
+
 ## Milestones
 
 1. **Text prototype.** Send a typed question and follow-up to either backend, selected through TOML or the CLI.
 2. **Microphone input.** Trigger a recording from the terminal and see the local Whisper transcript and the agent’s answer. Evaluate Vulkan acceleration for Whisper on the Radeon RX 9070 XT.
 3. **Spoken replies.** Enable local Kokoro synthesis and PipeWire playback with `voice --speak`. Ctrl+C interrupts speech and returns to the recording prompt.
-4. **Hands-free loop.** Use openWakeWord to start recording and Silero VAD to automatically transcribe and send the request when the user stops speaking. Resume wake-word listening after playback. Detection and synthesis run locally.
+4. **Hands-free loop.** OpenWakeWord can start recording and chimes mark the start and end. Next, use Silero VAD to automatically send the request when the user stops speaking. Wake-word listening resumes after playback.
 5. **Spoken stop command.** Recognize a dedicated stop word during reply playback and return to listening.
 6. **Conversational interruption.** Let the user speak naturally over a reply, stop playback promptly, and capture the interruption as the next turn. Account for speaker echo so the assistant’s own voice does not trigger an interruption.
 7. **Desktop service.** Start at login through a systemd user service and support starting, stopping, and restarting it as a regular user. Persistent sessions are planned separately from the current in-memory history.

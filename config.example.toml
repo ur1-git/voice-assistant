@@ -23,4 +23,6 @@ voice = "af_heart"
 language = "en-us"
 
 [wakeword]
-backend = "openwakeword" # future phase
+# Used by voice --wake.
+model = "models/openwakeword/hey_jarvis_v0.1.onnx"
+threshold = 0.5

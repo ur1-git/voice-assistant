@@ -29,6 +29,8 @@ class VoiceConfig:
     language: str
     transcription_timeout: int
     kokoro: KokoroConfig | None = None
+    wake_model: Path | None = None
+    wake_threshold: float = 0.5
 
 
 def _read_config(path: Path) -> dict:
@@ -70,7 +72,7 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
     return AgentConfig(provider, directory, turns, timeout)
 
 
-def load_voice_config(path: Path, *, speak: bool = False) -> VoiceConfig:
+def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) -> VoiceConfig:
     path = path.expanduser().resolve()
     raw = _read_config(path)
     audio = _table(raw, "audio")
@@ -108,6 +110,18 @@ def load_voice_config(path: Path, *, speak: bool = False) -> VoiceConfig:
             voice, speech_language,
         )
 
+    wake_model = None
+    wake_threshold = 0.5
+    if wake:
+        wakeword = _table(raw, "wakeword")
+        model_path = wakeword.get("model", "models/openwakeword/hey_jarvis_v0.1.onnx")
+        wake_threshold = wakeword.get("threshold", 0.5)
+        if not isinstance(model_path, str) or not model_path.strip():
+            raise ValueError("wakeword.model must be a non-empty string")
+        if type(wake_threshold) not in (int, float) or not 0 < wake_threshold <= 1:
+            raise ValueError("wakeword.threshold must be greater than 0 and at most 1")
+        wake_model = _resolve_path(model_path, path)
+
     return VoiceConfig(
         agent=_agent_config(raw, path),
         device=device,
@@ -116,4 +130,6 @@ def load_voice_config(path: Path, *, speak: bool = False) -> VoiceConfig:
         language=language,
         transcription_timeout=timeout,
         kokoro=kokoro,
+        wake_model=wake_model,
+        wake_threshold=wake_threshold,
     )

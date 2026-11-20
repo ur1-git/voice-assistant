@@ -9,6 +9,7 @@ from .agents.base import AgentError
 from .agents.claude import ClaudeAgent
 from .agents.codex import CodexAgent
 from .audio.pipewire import RecordingError, record_wav
+from .audio.wakeword import WakeWordDetector, play_chime
 from .core.config import VoiceConfig, load_config, load_voice_config
 from .core.pipeline import Pipeline
 from .stt.whisper_cpp import TranscriptionError, transcribe
@@ -17,18 +18,35 @@ from .tts.kokoro import KokoroSpeaker, SpeechError
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
     speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
+    detector = (
+        WakeWordDetector(config.wake_model, config.wake_threshold)
+        if config.wake_model is not None else None
+    )
     while True:
         try:
-            choice = input("Press Enter to record or type /quit to exit. ").strip()
-            if choice in ("/quit", "/exit"):
-                return
-            if choice:
-                continue
+            if detector:
+                print("Listening for Hey Jarvis. Press Ctrl+C to quit.", flush=True)
+                try:
+                    detector.wait(config.device)
+                except RecordingError as exc:
+                    print(f"Error: {exc}", file=sys.stderr)
+                    return
+            else:
+                choice = input("Press Enter to record or type /quit to exit. ").strip()
+                if choice in ("/quit", "/exit"):
+                    return
+                if choice:
+                    continue
 
             with TemporaryDirectory(prefix="voice-assistant-") as directory:
                 audio = Path(directory) / "request.wav"
+                chime = audio.with_name("chime.wav")
+                if detector:
+                    play_chime(chime, waking=True)
                 print(f"Recording for up to {config.max_record_seconds}s. Press Ctrl+C to stop.", flush=True)
                 record_wav(audio, device=config.device, max_seconds=config.max_record_seconds)
+                if detector:
+                    play_chime(chime, waking=False)
                 print("\nTranscribing…", flush=True)
                 transcript = transcribe(
                     audio, model=config.model, language=config.language,
@@ -69,6 +87,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
         command.add_argument("--agent", choices=("codex", "claude"))
         if name == "voice":
             command.add_argument("--speak", action="store_true", help="Read replies aloud with Kokoro")
+            command.add_argument("--wake", action="store_true", help="Start recording when you say Hey Jarvis")
         if name == "ask":
             command.add_argument("message")
     args = parser.parse_args(argv)
@@ -80,10 +99,13 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
         return 0
 
     try:
-        voice_config = load_voice_config(args.config, speak=args.speak) if args.command == "voice" else None
+        voice_config = (
+            load_voice_config(args.config, speak=args.speak, wake=args.wake)
+            if args.command == "voice" else None
+        )
         if voice_config is not None:
             tools = ("pw-record", "whisper-cli")
-            if voice_config.kokoro is not None:
+            if voice_config.kokoro is not None or voice_config.wake_model is not None:
                 tools += ("pw-play",)
             for tool in tools:
                 if not shutil.which(tool):
