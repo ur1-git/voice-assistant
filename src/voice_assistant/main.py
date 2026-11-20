@@ -39,7 +39,7 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
-            reply = pipeline.respond(transcript)
+            reply = pipeline.respond(transcript, spoken=speaker is not None)
             print("Assistant> " + reply + "\n", flush=True)
             if speaker:
                 print("Speaking… Press Ctrl+C to stop.", flush=True)

@@ -7,10 +7,10 @@ class Pipeline:
         self.agent = agent
         self.session = Session(max_history_turns)
 
-    def respond(self, text: str) -> str:
+    def respond(self, text: str, *, spoken: bool = False) -> str:
         text = text.strip()
         if not text:
             raise ValueError("Message cannot be empty")
-        response = self.agent.ask(self.session.prompt(text))
+        response = self.agent.ask(self.session.prompt(text, spoken=spoken))
         self.session.remember(text, response)
         return response
