@@ -14,6 +14,7 @@ def record_wav(path: Path, *, device: str, max_seconds: int) -> None:
         "pw-record", f"--target={device}", "--rate=16000",
         "--channels=1", "--format=s16", str(path),
     ]
+    stop_requested = False
     # Keep terminal Ctrl+C in Python so PipeWire can close the WAV cleanly.
     with subprocess.Popen(
         command,
@@ -26,7 +27,9 @@ def record_wav(path: Path, *, device: str, max_seconds: int) -> None:
             try:
                 _, stderr = recorder.communicate(timeout=max_seconds)
             except (KeyboardInterrupt, subprocess.TimeoutExpired):
-                recorder.send_signal(signal.SIGINT)
+                stop_requested = recorder.poll() is None
+                if stop_requested:
+                    recorder.send_signal(signal.SIGINT)
                 try:
                     _, stderr = recorder.communicate(timeout=3)
                 except subprocess.TimeoutExpired as exc:
@@ -35,8 +38,10 @@ def record_wav(path: Path, *, device: str, max_seconds: int) -> None:
             if recorder.poll() is None:
                 recorder.kill()
 
-    if recorder.returncode:
-        detail = stderr.decode(errors="replace").strip()
+    detail = stderr.decode(errors="replace").strip()
+    # pw-record can finalize the WAV and exit 1 after SIGINT without an error message.
+    stopped_cleanly = stop_requested and recorder.returncode == 1 and not detail
+    if recorder.returncode and not stopped_cleanly:
         raise RecordingError(f"pw-record failed (exit {recorder.returncode}): {detail[-1200:]}")
 
     try:
