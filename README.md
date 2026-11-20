@@ -105,7 +105,19 @@ The default detection threshold is 0.5. If you hear too many false wakes, raise 
 4. **Hands-free loop.** OpenWakeWord starts recording and Silero VAD sends the request when the user stops speaking. Chimes mark the start and end. Wake-word listening resumes after playback.
 5. **Spoken stop command.** Recognize a dedicated stop word during reply playback and return to listening.
 6. **Conversational interruption.** Let the user speak naturally over a reply, stop playback promptly, and capture the interruption as the next turn. Account for speaker echo so the assistant’s own voice does not trigger an interruption.
-7. **Desktop service.** Start at login through a systemd user service and support starting, stopping, and restarting it as a regular user. Persistent sessions are planned separately from the current in-memory history.
+7. **Desktop service.** Start at graphical login through a systemd user service. Persistent sessions are planned separately from the current in-memory history.
+
+## Start at graphical login
+
+After configuring and testing `./voice-assistant`, install the user unit. Its launcher path assumes the checkout is at `~/Dev/projects/python/voice-assistant`. Adjust `ExecStart` in the installed unit if your checkout is elsewhere.
+
+```bash
+install -Dm644 systemd/voice-assistant.service ~/.config/systemd/user/voice-assistant.service
+systemctl --user daemon-reload
+systemctl --user enable --now voice-assistant.service
+```
+
+Close any manually started assistant before using the service. Use `systemctl --user stop voice-assistant.service` to stop it and `journalctl --user -u voice-assistant.service -f` to see its output, including transcripts and replies.
 
 ## Agent access
 

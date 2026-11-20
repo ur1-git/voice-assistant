@@ -1,0 +1,15 @@
+[Unit]
+Description=Voice assistant with Hey Jarvis wake detection
+PartOf=graphical-session.target
+Wants=pipewire.service wireplumber.service
+After=pipewire.service wireplumber.service
+
+[Service]
+Type=exec
+ExecStart=%h/Dev/projects/python/voice-assistant/voice-assistant
+Restart=always
+RestartSec=3s
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target
