@@ -10,6 +10,7 @@ class AgentConfig:
     working_directory: Path = Path(".")
     max_history_turns: int = 8
     timeout_seconds: int = 180
+    max_history_chars: int = 4000
 
 
 @dataclass(frozen=True)
@@ -67,9 +68,12 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
         raise ValueError(f"Agent working directory not found: {directory}")
     turns = int(data.get("max_history_turns", 8))
     timeout = int(data.get("timeout_seconds", 180))
+    history_chars = data.get("max_history_chars", 4000)
     if turns < 0 or timeout < 1:
         raise ValueError("History must be >= 0 and timeout >= 1")
-    return AgentConfig(provider, directory, turns, timeout)
+    if type(history_chars) is not int or history_chars < 0:
+        raise ValueError("agent.max_history_chars must be a nonnegative integer")
+    return AgentConfig(provider, directory, turns, timeout, history_chars)
 
 
 def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) -> VoiceConfig:

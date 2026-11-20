@@ -117,7 +117,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
         agent_cls = CodexAgent if provider == "codex" else ClaudeAgent
         agent = agent_cls(executables.get(provider, provider), config.working_directory, config.timeout_seconds)
         agent.ensure_available()
-        pipeline = Pipeline(agent, config.max_history_turns)
+        pipeline = Pipeline(agent, config.max_history_turns, max_history_chars=config.max_history_chars)
         if voice_config is not None:
             voice_chat(pipeline, voice_config)
         elif args.command == "ask":

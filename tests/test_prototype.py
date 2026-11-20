@@ -32,6 +32,28 @@ class PrototypeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Pipeline(FakeAgent()).respond("   ")
 
+    def test_history_budget_keeps_latest_turn_and_full_current_message(self):
+        fake = FakeAgent()
+        pipeline = Pipeline(fake, max_history_chars=40)
+        pipeline.session.remember("old question", "old reply")
+        pipeline.session.remember("latest", "long answer " * 100)
+        question = "current question " * 20
+        pipeline.respond(question)
+        history, current = fake.prompts[-1].split("\n\nCurrent user message:\n")
+        self.assertNotIn("old question", history)
+        excerpt = history.split("\n", 1)[1]
+        self.assertEqual(len(excerpt), 40)
+        self.assertTrue(excerpt.startswith("User: latest"))
+        self.assertTrue(excerpt.endswith("…"))
+        self.assertEqual(current, question.strip())
+
+    def test_zero_history_budget(self):
+        fake = FakeAgent()
+        pipeline = Pipeline(fake, max_history_chars=0)
+        pipeline.respond("first")
+        pipeline.respond("second")
+        self.assertEqual(fake.prompts, ["first", "second"])
+
     def test_config_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = load_config(Path(directory) / "missing.toml")

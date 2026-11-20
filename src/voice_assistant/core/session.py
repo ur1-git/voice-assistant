@@ -16,14 +16,26 @@ SPOKEN_REPLY_RULES = (
 class Session:
     max_turns: int = 8
     history: list[tuple[str, str]] = field(default_factory=list)
+    max_history_chars: int = 4000
 
     def prompt(self, text: str, *, spoken: bool = False) -> str:
         lines = [SPOKEN_REPLY_RULES, ""] if spoken else []
-        if not self.history:
+        history = []
+        remaining = self.max_history_chars
+        for question, answer in reversed(self.history[-self.max_turns:] if self.max_turns else []):
+            if remaining <= 0:
+                break
+            turn = f"User: {question}\nAssistant: {answer}\n"
+            if len(turn) > remaining:
+                if not history:
+                    history.append(turn[:remaining - 1] + "…")
+                break
+            history.append(turn)
+            remaining -= len(turn)
+        if not history:
             return "\n".join([*lines, text])
         lines.append("Previous conversation (context only):")
-        for question, answer in self.history[-self.max_turns:] if self.max_turns else []:
-            lines.extend((f"User: {question}", f"Assistant: {answer}"))
+        lines.append("".join(reversed(history)).rstrip())
         lines.extend(("", "Current user message:", text))
         return "\n".join(lines)
 

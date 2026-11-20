@@ -3,6 +3,7 @@
 provider = "codex" # "codex" or "claude"
 working_directory = "." # relative to this config file, or absolute
 max_history_turns = 8
+max_history_chars = 4000 # Prior conversation only. Set to 0 for a fresh start on every turn.
 timeout_seconds = 180
 
 [audio]
