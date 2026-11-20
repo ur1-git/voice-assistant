@@ -91,7 +91,7 @@ for model in hey_jarvis_v0.1 embedding_model melspectrogram silero_vad; do
 done
 ```
 
-Use `voice-assistant voice --wake --speak` and say “Hey Jarvis.” Wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. If you never start speaking, the app returns to listening after five seconds without sending a request. After the reply, the app listens for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
+Run `./voice-assistant` from the project folder to start wake mode with spoken replies. The launcher uses the project's `.venv` and `config.toml`. Say “Hey Jarvis” and wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. If you never start speaking, the app returns to listening after five seconds without sending a request. After the reply, the app listens for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
 
 The Silero ONNX model goes next to the wake model and uses the same ONNX Runtime already installed for openWakeWord. Set `audio.end_silence_ms` in `config.toml` to give yourself more or less pause time before sending. The existing `audio.max_record_seconds` still caps recordings.
 

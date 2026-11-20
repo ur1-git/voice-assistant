@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+project_dir=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+cd "$project_dir"
+
+if [ ! -x .venv/bin/voice-assistant ]; then
+    echo "Project launcher needs .venv/bin/voice-assistant. See Development setup in README.md." >&2
+    exit 1
+fi
+
+exec .venv/bin/voice-assistant voice --wake --speak "$@"
