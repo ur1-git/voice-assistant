@@ -61,13 +61,31 @@ Press Enter to record, speak your request, then press Ctrl+C to stop recording. 
 
 The default PipeWire input is used automatically. To choose another microphone, run `wpctl status --name` and set `audio.device` to its node name under Sources. The app writes each recording as a temporary 16 kHz mono WAV for local Whisper transcription and removes the temporary files after processing. The selected AI backend receives the transcript and the bounded conversation history. Codex can also read project files to answer questions.
 
+## Spoken replies
+
+In the development checkout, install the optional TTS dependencies in your project venv:
+
+```bash
+python -m pip install -e '.[tts]'
+```
+
+Place `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the [Kokoro ONNX release](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1) in `models/`. The default voice is American English (`af_heart`). Set `tts.voice` and `tts.language` in your config to change the voice and pronunciation language. Kokoro synthesizes locally and uses `pw-play` on the default PipeWire output.
+
+```bash
+voice-assistant voice --speak
+```
+
+The app prints each reply before speaking it. Ctrl+C during synthesis or playback returns to the recording prompt. The portable bundle currently uses text replies.
+
 ## Milestones
 
 1. **Text prototype.** Send a typed question and follow-up to either backend, selected through TOML or the CLI.
 2. **Microphone input.** Trigger a recording from the terminal and see the local Whisper transcript and the agent’s answer. Evaluate Vulkan acceleration for Whisper on the Radeon RX 9070 XT.
-3. **Spoken replies.** Send the final answer to Kokoro for local speech synthesis and play it through PipeWire on the selected output. Support playback interruption and return to readiness for another request.
-4. **Hands-free loop.** Use openWakeWord to start a turn and Silero VAD to end recording after a pause. Resume wake-word listening after playback to avoid triggering on the assistant’s voice. Detection and synthesis run locally.
-5. **Desktop service.** Start at login through a systemd user service and support starting, stopping, and restarting it as a regular user. Persistent sessions are planned separately from the current in-memory history.
+3. **Spoken replies.** Enable local Kokoro synthesis and PipeWire playback with `voice --speak`. Ctrl+C interrupts speech and returns to the recording prompt.
+4. **Hands-free loop.** Use openWakeWord to start recording and Silero VAD to automatically transcribe and send the request when the user stops speaking. Resume wake-word listening after playback. Detection and synthesis run locally.
+5. **Spoken stop command.** Recognize a dedicated stop word during reply playback and return to listening.
+6. **Conversational interruption.** Let the user speak naturally over a reply, stop playback promptly, and capture the interruption as the next turn. Account for speaker echo so the assistant’s own voice does not trigger an interruption.
+7. **Desktop service.** Start at login through a systemd user service and support starting, stopping, and restarting it as a regular user. Persistent sessions are planned separately from the current in-memory history.
 
 ## Agent access
 
@@ -81,7 +99,7 @@ Approved project changes are later work. Before enabling write actions, define w
 - `src/voice_assistant/core/` loads TOML settings and coordinates conversation history.
 - `src/voice_assistant/audio/` records from PipeWire.
 - `src/voice_assistant/stt/` transcribes through whisper.cpp.
-- `src/voice_assistant/tts/` is reserved for the Kokoro adapter.
+- `src/voice_assistant/tts/` synthesizes replies with Kokoro and plays them through PipeWire.
 - `tests/` contains offline checks.
 
 ```bash

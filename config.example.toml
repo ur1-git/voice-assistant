@@ -16,7 +16,11 @@ language = "auto" # or a language code such as "en" or "es"
 timeout_seconds = 90
 
 [tts]
-backend = "kokoro" # future phase
+# Used by voice --speak.
+model = "models/kokoro-v1.0.onnx"
+voices = "models/voices-v1.0.bin"
+voice = "af_heart"
+language = "en-us"
 
 [wakeword]
 backend = "openwakeword" # future phase

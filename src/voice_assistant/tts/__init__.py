@@ -1,1 +1,1 @@
-"""Kokoro text-to-speech integration (future phase)."""
+"""Local text-to-speech integration."""

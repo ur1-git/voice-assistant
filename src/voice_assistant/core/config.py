@@ -13,6 +13,14 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class KokoroConfig:
+    model: Path
+    voices: Path
+    voice: str
+    language: str
+
+
+@dataclass(frozen=True)
 class VoiceConfig:
     agent: AgentConfig
     device: str
@@ -20,6 +28,7 @@ class VoiceConfig:
     model: Path
     language: str
     transcription_timeout: int
+    kokoro: KokoroConfig | None = None
 
 
 def _read_config(path: Path) -> dict:
@@ -61,7 +70,7 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
     return AgentConfig(provider, directory, turns, timeout)
 
 
-def load_voice_config(path: Path) -> VoiceConfig:
+def load_voice_config(path: Path, *, speak: bool = False) -> VoiceConfig:
     path = path.expanduser().resolve()
     raw = _read_config(path)
     audio = _table(raw, "audio")
@@ -81,6 +90,24 @@ def load_voice_config(path: Path) -> VoiceConfig:
         if type(value) is not int or value < 1:
             raise ValueError(f"{name} must be a positive integer")
 
+    kokoro = None
+    if speak:
+        tts = _table(raw, "tts")
+        model_path = tts.get("model", "models/kokoro-v1.0.onnx")
+        voices_path = tts.get("voices", "models/voices-v1.0.bin")
+        voice = tts.get("voice", "af_heart")
+        speech_language = tts.get("language", "en-us")
+        for name, value in (
+            ("model", model_path), ("voices", voices_path),
+            ("voice", voice), ("language", speech_language),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"tts.{name} must be a non-empty string")
+        kokoro = KokoroConfig(
+            _resolve_path(model_path, path), _resolve_path(voices_path, path),
+            voice, speech_language,
+        )
+
     return VoiceConfig(
         agent=_agent_config(raw, path),
         device=device,
@@ -88,4 +115,5 @@ def load_voice_config(path: Path) -> VoiceConfig:
         model=_resolve_path(model, path),
         language=language,
         transcription_timeout=timeout,
+        kokoro=kokoro,
     )

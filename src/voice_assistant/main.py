@@ -12,9 +12,11 @@ from .audio.pipewire import RecordingError, record_wav
 from .core.config import VoiceConfig, load_config, load_voice_config
 from .core.pipeline import Pipeline
 from .stt.whisper_cpp import TranscriptionError, transcribe
+from .tts.kokoro import KokoroSpeaker, SpeechError
 
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
+    speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
     while True:
         try:
             choice = input("Press Enter to record or type /quit to exit. ").strip()
@@ -37,11 +39,18 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
-            print("Assistant> " + pipeline.respond(transcript) + "\n")
+            reply = pipeline.respond(transcript)
+            print("Assistant> " + reply + "\n", flush=True)
+            if speaker:
+                print("Speaking… Press Ctrl+C to stop.", flush=True)
+                try:
+                    speaker.speak(reply)
+                except KeyboardInterrupt:
+                    print("\nSpeech stopped.")
         except (EOFError, KeyboardInterrupt):
             print()
             return
-        except (RecordingError, TranscriptionError, AgentError, OSError, ValueError) as exc:
+        except (RecordingError, TranscriptionError, AgentError, SpeechError, OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
 
 
@@ -58,20 +67,25 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
     ):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("--agent", choices=("codex", "claude"))
+        if name == "voice":
+            command.add_argument("--speak", action="store_true", help="Read replies aloud with Kokoro")
         if name == "ask":
             command.add_argument("message")
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
         print(f"Python: {sys.version.split()[0]}")
-        for tool in ("codex", "claude", "pactl", "pw-record", "whisper-cli", "vulkaninfo"):
+        for tool in ("codex", "claude", "pactl", "pw-record", "pw-play", "whisper-cli", "vulkaninfo"):
             print(f"{tool}: {shutil.which(executables.get(tool, tool)) or 'not found'}")
         return 0
 
     try:
-        voice_config = load_voice_config(args.config) if args.command == "voice" else None
+        voice_config = load_voice_config(args.config, speak=args.speak) if args.command == "voice" else None
         if voice_config is not None:
-            for tool in ("pw-record", "whisper-cli"):
+            tools = ("pw-record", "whisper-cli")
+            if voice_config.kokoro is not None:
+                tools += ("pw-play",)
+            for tool in tools:
                 if not shutil.which(tool):
                     raise ValueError(f"Executable '{tool}' not found in PATH")
             if not voice_config.model.is_file():
@@ -102,7 +116,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
                     print("Assistant> " + pipeline.respond(question) + "\n")
                 except (AgentError, ValueError) as exc:
                     print(f"Error: {exc}", file=sys.stderr)
-    except (AgentError, ValueError, OSError) as exc:
+    except (AgentError, SpeechError, ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 0
