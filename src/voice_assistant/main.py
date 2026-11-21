@@ -11,6 +11,7 @@ from .agents.codex import CodexAgent
 from .audio.end_of_speech import EndOfSpeechRecorder
 from .audio.pipewire import RecordingError, record_wav
 from .audio.wakeword import WakeWordDetector, play_chime
+from .core.commands import CommandError, normalize_activation
 from .core.config import VoiceConfig, load_config, load_voice_config
 from .core.pipeline import Pipeline
 from .stt.whisper_cpp import TranscriptionError, transcribe
@@ -78,10 +79,19 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
-            reply = pipeline.respond(
-                transcript, spoken=speaker is not None,
-                on_progress=announce_progress if speaker is not None else None,
-            )
+            command = config.commands.get(normalize_activation(transcript))
+            if command is None:
+                reply = pipeline.respond(
+                    transcript, spoken=speaker is not None,
+                    on_progress=announce_progress if speaker is not None else None,
+                )
+            else:
+                print("Running local command.", flush=True)
+                try:
+                    reply = command.run(config.agent.working_directory, config.agent.timeout_seconds)
+                except CommandError as exc:
+                    print(f"Error: {exc}", file=sys.stderr)
+                    reply = "The local command failed."
             print("Assistant> " + reply + "\n", flush=True)
             if speaker:
                 print("Speaking… Press Ctrl+C to stop.", flush=True)
@@ -146,7 +156,8 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
             )
         else:
             agent = ClaudeAgent(executable, config.working_directory, config.timeout_seconds)
-        agent.ensure_available()
+        if voice_config is None:
+            agent.ensure_available()
         pipeline = Pipeline(agent, config.max_history_turns, max_history_chars=config.max_history_chars)
         if voice_config is not None:
             voice_chat(pipeline, voice_config)

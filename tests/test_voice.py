@@ -10,6 +10,39 @@ from voice_assistant.stt.whisper_cpp import TranscriptionError
 
 
 class VoiceTests(unittest.TestCase):
+    def test_local_commands_match_complete_phrases_and_only_unmatched_turns_use_agent(self):
+        with TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.with_name("model.bin").touch()
+            config.write_text(
+                '[agent]\nprovider = "claude"\n'
+                '[stt]\nmodel = "model.bin"\n'
+                '[[commands]]\nactivation = "shutdown now"\n'
+                'code = "bash: touch tested"\nreply = "Local command done."\n'
+                '[[commands]]\nactivation = "test failure"\n'
+                'code = "python: raise SystemExit(3)"\n',
+                encoding="utf-8",
+            )
+            stdout, stderr = StringIO(), StringIO()
+            with (
+                patch("shutil.which", return_value="/fake/tool"),
+                patch("builtins.input", side_effect=["", "", "", "/quit"]),
+                patch("voice_assistant.main.record_wav"),
+                patch("voice_assistant.main.transcribe", side_effect=[
+                    "  Shutdown   NOW! ", "What does shutdown now do?", "test failure",
+                ]),
+                patch("voice_assistant.main.ClaudeAgent.ask", return_value="An explanation.") as ask,
+                redirect_stdout(stdout),
+                redirect_stderr(stderr),
+            ):
+                self.assertEqual(main(["--config", str(config), "voice"]), 0)
+
+            self.assertTrue(config.with_name("tested").is_file())
+            ask.assert_called_once_with("What does shutdown now do?")
+            self.assertIn("Local command done.", stdout.getvalue())
+            self.assertIn("The local command failed.", stdout.getvalue())
+            self.assertIn("Local command exited 3.", stderr.getvalue())
+
     def test_voice_chat_keeps_history_and_cleans_up_failed_turns(self):
         with TemporaryDirectory() as directory:
             config = Path(directory) / "config.toml"

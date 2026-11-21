@@ -121,6 +121,21 @@ systemctl --user enable --now voice-assistant.service
 
 Close any manually started assistant before using the service. Use `systemctl --user stop voice-assistant.service` to stop it and `journalctl --user -u voice-assistant.service -f` to see its output, including transcripts and replies.
 
+## Local voice commands
+
+Add a `[[commands]]` block to your local `config.toml` for each phrase. For example:
+
+```toml
+[[commands]]
+activation = "shutdown now"
+code = "bash: /usr/bin/systemctl --no-ask-password poweroff"
+reply = "Shutting down."
+```
+
+Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user. Add another block with a different activation for an alias.
+
+Voice mode checks the complete transcript against a dictionary before calling the AI. Matching ignores case, extra whitespace, and punctuation at the edges. A match runs only the code saved in your config. Unmatched requests follow the normal AI flow, including spoken progress. Restart the assistant after editing the file.
+
 ## Agent access
 
 Codex defaults to read-only access. To enable full access without approval prompts, set `codex_full_access = true` under `[agent]` in your local `config.toml` and restart the app. Codex can then read and modify files and run commands anywhere your Linux account has permission. The working directory is where it starts. Claude Code runs with its tools disabled.

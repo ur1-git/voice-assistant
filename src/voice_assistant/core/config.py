@@ -1,7 +1,9 @@
 """Configuration loaded from a local TOML file."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import tomllib
+
+from .commands import LocalCommand, load_commands
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class VoiceConfig:
     wake_model: Path | None = None
     wake_threshold: float = 0.5
     end_silence_ms: int = 1000
+    commands: dict[str, LocalCommand] = field(default_factory=dict)
 
 
 def _read_config(path: Path) -> dict:
@@ -146,4 +149,5 @@ def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) ->
         wake_model=wake_model,
         wake_threshold=wake_threshold,
         end_silence_ms=end_silence_ms,
+        commands=load_commands(raw.get("commands", [])),
     )
