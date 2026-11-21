@@ -49,6 +49,10 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
         print("Speech stopped.", flush=True)
         return False
 
+    def announce_reply(message: str) -> bool:
+        print(f"Assistant> {message}\n", flush=True)
+        return speak(message)
+
     def announce_progress(message: str) -> None:
         print(f"Progress> {message}", flush=True)
         try:
@@ -107,8 +111,7 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                     learned_commands=learned_commands,
                 )
             else:
-                print("Assistant> " + command.reply + "\n", flush=True)
-                if not speak(command.reply):
+                if not command.run_before_reply and not announce_reply(command.reply):
                     print("Local command canceled.", flush=True)
                     continue
                 print("Running local command.", flush=True)
@@ -116,11 +119,12 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                     command.run(config.agent.working_directory, config.agent.timeout_seconds)
                 except CommandError as exc:
                     print(f"Error: {exc}", file=sys.stderr)
-                    print("Assistant> The local command failed.", flush=True)
-                    speak("The local command failed.")
-                continue
-            print("Assistant> " + reply + "\n", flush=True)
-            speak(reply)
+                    reply = "The local command failed."
+                else:
+                    if not command.run_before_reply:
+                        continue
+                    reply = command.reply
+            announce_reply(reply)
         except (EOFError, KeyboardInterrupt):
             print()
             return

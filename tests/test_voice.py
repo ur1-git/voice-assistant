@@ -7,11 +7,63 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+from voice_assistant.core.commands import load_commands
 from voice_assistant.main import main
 from voice_assistant.stt.whisper_cpp import TranscriptionError
 
 
 class VoiceTests(unittest.TestCase):
+    def test_command_fields_accept_legacy_syntax_and_reject_ambiguity(self):
+        for field, language, code in (
+            ("codeBash", "bash", "echo 'Hello: world'"),
+            ("codePython", "python", "print('Hello: world')"),
+        ):
+            with self.subTest(field=field):
+                legacy = load_commands([{"activation": "test", "code": f"{language}: {code}"}])
+                current = load_commands([{"activation": "test", field: code}])
+                self.assertEqual(current, legacy)
+        for fields in ({}, {"codeBash": "true", "codePython": "pass"}, {"code": "bash: true", "codeBash": "true"}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(ValueError, "exactly one"):
+                load_commands([{"activation": "test", **fields}])
+
+    def test_run_before_reply_requires_a_boolean(self):
+        with self.assertRaisesRegex(ValueError, "runBeforeReply.*true or false"):
+            load_commands([{"activation": "test", "codeBash": "true", "runBeforeReply": "false"}])
+
+    def test_commands_announce_the_result_after_execution_by_default(self):
+        with TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            marker = config.with_name("tested")
+            config.with_name("model.bin").touch()
+            config.write_text(
+                '[stt]\nmodel = "model.bin"\n'
+                '[[commands]]\nactivation = "test success"\n'
+                'codeBash = "touch tested"\nreply = "It worked."\n'
+                '[[commands]]\nactivation = "test failure"\n'
+                'codePython = "raise SystemExit(3)"\nrunBeforeReply = true\nreply = "False success."\n',
+                encoding="utf-8",
+            )
+            replies = []
+
+            def speak(message, *, interrupt):
+                self.assertTrue(marker.exists())
+                replies.append(message)
+                return True
+
+            with (
+                patch("shutil.which", return_value="/fake/tool"),
+                patch("builtins.input", side_effect=["", "", "/quit"]),
+                patch("voice_assistant.main.record_wav"),
+                patch("voice_assistant.main.transcribe", side_effect=["test success", "test failure"]),
+                patch("voice_assistant.main.KokoroSpeaker") as speaker,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                speaker.return_value.speak.side_effect = speak
+                self.assertEqual(main(["--config", str(config), "voice", "--speak"]), 0)
+
+            self.assertEqual(replies, ["It worked.", "The local command failed."])
+
     def test_app_launch_is_learned_and_replays_without_ai_after_restart(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -61,9 +113,9 @@ class VoiceTests(unittest.TestCase):
                 '[agent]\nprovider = "claude"\n'
                 '[stt]\nmodel = "model.bin"\n'
                 '[[commands]]\nactivation = ["shutdown now", "shut down now"]\n'
-                'code = "bash: echo ran >> tested"\nreply = "Running local command."\n'
+                'codeBash = "echo ran >> tested"\nrunBeforeReply = false\nreply = "Running local command."\n'
                 '[[commands]]\nactivation = "test failure"\n'
-                'code = "python: raise SystemExit(3)"\n',
+                'codePython = "raise SystemExit(3)"\n',
                 encoding="utf-8",
             )
             stdout, stderr = StringIO(), StringIO()

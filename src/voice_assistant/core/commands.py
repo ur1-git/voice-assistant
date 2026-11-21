@@ -18,6 +18,7 @@ class LocalCommand:
     argv: tuple[str, ...]
     reply: str
     capture_output: bool = True
+    run_before_reply: bool = True
 
     def run(self, directory: Path, timeout: int) -> None:
         output = subprocess.PIPE if self.capture_output else subprocess.DEVNULL
@@ -38,6 +39,7 @@ def load_commands(entries: object) -> dict[str, LocalCommand]:
         raise ValueError("Use [[commands]] for each local command")
     commands = {}
     interpreters = {"bash": "/usr/bin/bash", "python": sys.executable}
+    code_fields = {"codeBash": "bash", "codePython": "python"}
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError("Each commands entry must be a TOML table")
@@ -47,17 +49,29 @@ def load_commands(entries: object) -> dict[str, LocalCommand]:
         phrases = [activation] if isinstance(activation, str) else activation
         if not isinstance(phrases, list) or not phrases:
             raise ValueError("commands.activation must be a phrase or a non-empty list of phrases")
-        code = entry.get("code")
-        reply = entry.get("reply", "Running the command.")
-        if not isinstance(code, str):
-            raise ValueError(f"Set commands.code for {activation}")
-        language, _, source = code.partition(":")
-        interpreter = interpreters.get(language.strip())
-        if not interpreter or not source.strip():
-            raise ValueError(f"commands.code for {activation} must start with 'bash:' or 'python:'")
+        fields = [field for field in (*code_fields, "code") if field in entry]
+        if len(fields) != 1:
+            raise ValueError(f"Use exactly one of codeBash or codePython for {activation}")
+        field = fields[0]
+        source = entry[field]
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"commands.{field} for {activation} must be a non-empty string")
+        if field == "code":
+            language, _, source = source.partition(":")
+            language = language.strip()
+            if language not in interpreters or not source.strip():
+                raise ValueError(f"Use codeBash or codePython for {activation}, or prefix legacy code with 'bash:' or 'python:'")
+        else:
+            language = code_fields[field]
+        run_before_reply = entry.get("runBeforeReply", True)
+        if type(run_before_reply) is not bool:
+            raise ValueError(f"commands.runBeforeReply for {activation} must be true or false")
+        reply = entry.get("reply", "Done." if run_before_reply else "Running the command.")
         if not isinstance(reply, str) or not reply.strip():
             raise ValueError(f"commands.reply for {activation} must be a non-empty string")
-        command = LocalCommand((interpreter, "-c", source.lstrip()), reply)
+        command = LocalCommand(
+            (interpreters[language], "-c", source.lstrip()), reply, run_before_reply=run_before_reply,
+        )
         for phrase in phrases:
             if not isinstance(phrase, str) or not (key := normalize_activation(phrase)):
                 raise ValueError("commands.activation must contain only non-empty phrases")

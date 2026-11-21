@@ -128,15 +128,16 @@ Add a `[[commands]]` block to your local `config.toml` for each phrase. For exam
 ```toml
 [[commands]]
 activation = ["shutdown now", "shut down now"]
-code = "bash: /usr/bin/systemctl --no-ask-password poweroff"
+codeBash = "/usr/bin/systemctl --no-ask-password poweroff"
+runBeforeReply = false
 reply = "Shutting down."
 ```
 
-Use a string for one activation phrase or a list for several. Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user.
+Use a string for one activation phrase or a list for several. Each command uses one field, `codeBash` for Bash or `codePython` for Python. Set the field to the code itself. Python runs in the assistant's environment, including access to modules installed there. Commands run from `agent.working_directory` as your Linux user. Existing `code` entries with a `bash:` or `python:` prefix still work.
 
 Voice mode checks your configured commands and learned shortcuts before calling the AI. Matching uses the complete transcript and ignores case, extra whitespace, and punctuation at the edges. Configured commands take precedence. Restart the assistant after editing `config.toml`.
 
-The assistant finishes saying the configured reply before running the command. Interrupt its announcement to cancel the pending command.
+By default, the assistant runs the command first, then speaks the configured reply on success or reports the failure. Set `runBeforeReply = false` inside a `[[commands]]` block to finish speaking before running the code. In that mode, interrupt the announcement to cancel the pending command.
 
 ### Learned app shortcuts
 
