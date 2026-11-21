@@ -14,6 +14,8 @@ class AgentConfig:
     timeout_seconds: int = 180
     max_history_chars: int = 4000
     codex_full_access: bool = False
+    codex_model: str | None = None
+    codex_reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,18 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
     codex_full_access = data.get("codex_full_access", False)
     if type(codex_full_access) is not bool:
         raise ValueError("agent.codex_full_access must be true or false")
-    return AgentConfig(provider, directory, turns, timeout, history_chars, codex_full_access)
+    codex_model = data.get("codex_model")
+    codex_reasoning_effort = data.get("codex_reasoning_effort")
+    for name, value in (
+        ("codex_model", codex_model),
+        ("codex_reasoning_effort", codex_reasoning_effort),
+    ):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"agent.{name} must be a non-empty string")
+    return AgentConfig(
+        provider, directory, turns, timeout, history_chars, codex_full_access,
+        codex_model, codex_reasoning_effort,
+    )
 
 
 def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) -> VoiceConfig:
@@ -92,7 +105,7 @@ def load_voice_config(path: Path, *, speak: bool = False, wake: bool = False) ->
     device = audio.get("device", "auto")
     duration = audio.get("max_record_seconds", 30)
     model = stt.get("model", "models/ggml-small.bin")
-    language = stt.get("language", "auto")
+    language = stt.get("language", "en")
     timeout = stt.get("timeout_seconds", 90)
 
     if stt.get("backend", "whisper_cpp") != "whisper_cpp":

@@ -13,12 +13,13 @@ from .audio.pipewire import RecordingError, record_wav
 from .audio.wakeword import WakeWordDetector, play_chime
 from .core.commands import CommandError, normalize_activation
 from .core.config import VoiceConfig, load_config, load_voice_config
+from .core.learned_commands import LearnedCommands
 from .core.pipeline import Pipeline
 from .stt.whisper_cpp import TranscriptionError, transcribe
 from .tts.kokoro import KokoroSpeaker, SpeechError
 
 
-def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
+def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: LearnedCommands) -> None:
     speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
 
     detector = (
@@ -98,11 +99,12 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
-            command = config.commands.get(normalize_activation(transcript))
+            command = config.commands.get(normalize_activation(transcript)) or learned_commands.lookup(transcript)
             if command is None:
                 reply = pipeline.respond(
                     transcript, spoken=speaker is not None,
                     on_progress=announce_progress if speaker is not None else None,
+                    learned_commands=learned_commands,
                 )
             else:
                 print("Assistant> " + command.reply + "\n", flush=True)
@@ -148,7 +150,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
 
     if args.command == "doctor":
         print(f"Python: {sys.version.split()[0]}")
-        for tool in ("codex", "claude", "pactl", "pw-record", "pw-play", "whisper-cli", "vulkaninfo"):
+        for tool in ("codex", "claude", "pactl", "pw-record", "pw-play", "whisper-cli", "gio", "vulkaninfo"):
             print(f"{tool}: {shutil.which(executables.get(tool, tool)) or 'not found'}")
         return 0
 
@@ -173,6 +175,8 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
             agent = CodexAgent(
                 executable, config.working_directory, config.timeout_seconds,
                 full_access=config.codex_full_access,
+                model=config.codex_model,
+                reasoning_effort=config.codex_reasoning_effort,
             )
         else:
             agent = ClaudeAgent(executable, config.working_directory, config.timeout_seconds)
@@ -180,7 +184,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
             agent.ensure_available()
         pipeline = Pipeline(agent, config.max_history_turns, max_history_chars=config.max_history_chars)
         if voice_config is not None:
-            voice_chat(pipeline, voice_config)
+            voice_chat(pipeline, voice_config, LearnedCommands(args.config))
         elif args.command == "ask":
             print(pipeline.respond(args.message))
         else:

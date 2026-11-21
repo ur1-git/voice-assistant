@@ -38,8 +38,10 @@ class PortableTests(unittest.TestCase):
                 "    assert (state / 'auth.json').read_text() == 'fake credentials'\n"
                 "    assert Path.cwd().name == 'workspace'\n"
                 "    assert Path(os.environ['TMPDIR']).parent == state.parent\n"
+                "    instructions, message = sys.stdin.read().split('\\n\\nCurrent user message:\\n')\n"
+                "    assert 'Always reply in English' in instructions\n"
                 "    print(json.dumps({'type': 'item.completed', 'item': "
-                "{'type': 'agent_message', 'text': sys.stdin.read()}}))\n",
+                "{'type': 'agent_message', 'text': message}}))\n",
                 encoding="utf-8",
             )
             codex.chmod(0o755)

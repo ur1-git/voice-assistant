@@ -27,6 +27,8 @@ class PrototypeTests(unittest.TestCase):
         pipeline.respond("second")
         self.assertIn("first", fake.prompts[1])
         self.assertIn("Current user message:\nsecond", fake.prompts[1])
+        for prompt in fake.prompts:
+            self.assertIn("Always reply in English", prompt)
 
     def test_pipeline_blank_rejected(self):
         with self.assertRaises(ValueError):
@@ -39,9 +41,9 @@ class PrototypeTests(unittest.TestCase):
         pipeline.session.remember("latest", "long answer " * 100)
         question = "current question " * 20
         pipeline.respond(question)
-        history, current = fake.prompts[-1].split("\n\nCurrent user message:\n")
-        self.assertNotIn("old question", history)
-        excerpt = history.split("\n", 1)[1]
+        context, current = fake.prompts[-1].split("\n\nCurrent user message:\n")
+        _, excerpt = context.split("\nPrevious conversation (context only):\n")
+        self.assertNotIn("old question", excerpt)
         self.assertEqual(len(excerpt), 40)
         self.assertTrue(excerpt.startswith("User: latest"))
         self.assertTrue(excerpt.endswith("…"))
@@ -52,7 +54,9 @@ class PrototypeTests(unittest.TestCase):
         pipeline = Pipeline(fake, max_history_chars=0)
         pipeline.respond("first")
         pipeline.respond("second")
-        self.assertEqual(fake.prompts, ["first", "second"])
+        for prompt, question in zip(fake.prompts, ("first", "second"), strict=True):
+            self.assertNotIn("Previous conversation", prompt)
+            self.assertTrue(prompt.endswith(f"Current user message:\n{question}"))
 
     def test_config_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -69,6 +73,22 @@ class PrototypeTests(unittest.TestCase):
         with patch.object(agent, "run_process", return_value=payload) as run:
             self.assertEqual(agent.ask("hi"), "Hello!")
             self.assertIn("read-only", run.call_args.args[0])
+            self.assertIn("read-only sandbox", run.call_args.kwargs["stdin"])
+            self.assertNotIn("sandbox disabled", run.call_args.kwargs["stdin"])
+
+    def test_codex_full_access_instructions_reach_streaming_turn(self):
+        payload = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Saved."}})
+        agent = CodexAgent("codex", Path.cwd(), full_access=True)
+        pipeline = Pipeline(agent)
+        request = "Save a draft in Downloads."
+        with patch("voice_assistant.agents.codex.stream_codex", return_value=payload) as stream:
+            self.assertEqual(pipeline.respond(request, spoken=True, on_progress=lambda _: None), "Saved.")
+        _, args, prompt, _ = stream.call_args.args
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox", args)
+        self.assertIn("sandbox disabled", prompt)
+        self.assertIn("xdg-user-dir DOWNLOAD", prompt)
+        self.assertIn("Check access with tools", prompt)
+        self.assertTrue(prompt.endswith(f"Current user message:\n{request}"))
 
     def test_claude_json(self):
         agent = ClaudeAgent("claude", Path.cwd())

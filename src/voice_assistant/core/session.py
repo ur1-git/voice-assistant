@@ -2,9 +2,14 @@
 from dataclasses import dataclass, field
 
 
+REPLY_LANGUAGE_RULE = (
+    "Always reply in English, regardless of the language of the current message "
+    "or the previous conversation."
+)
+
 SPOKEN_REPLY_RULES = (
-    "Your entire reply will be read aloud. Use short, conversational sentences "
-    "in the language of the user's request. Refer to websites by their names "
+    "Your entire reply will be read aloud. Use short, conversational sentences. "
+    "Refer to websites by their names "
     "and explain technical terms in everyday language where possible. "
     "Give exact URLs, long paths, commands, code, or lengthy technical names "
     "only if the user explicitly asks for the exact wording. Use plain text "
@@ -19,7 +24,9 @@ class Session:
     max_history_chars: int = 4000
 
     def prompt(self, text: str, *, spoken: bool = False) -> str:
-        lines = [SPOKEN_REPLY_RULES, ""] if spoken else []
+        lines = [REPLY_LANGUAGE_RULE]
+        if spoken:
+            lines.append(SPOKEN_REPLY_RULES)
         history = []
         remaining = self.max_history_chars
         for question, answer in reversed(self.history[-self.max_turns:] if self.max_turns else []):
@@ -32,10 +39,8 @@ class Session:
                 break
             history.append(turn)
             remaining -= len(turn)
-        if not history:
-            return "\n".join([*lines, text])
-        lines.append("Previous conversation (context only):")
-        lines.append("".join(reversed(history)).rstrip())
+        if history:
+            lines.extend(("", "Previous conversation (context only):", "".join(reversed(history)).rstrip()))
         lines.extend(("", "Current user message:", text))
         return "\n".join(lines)
 

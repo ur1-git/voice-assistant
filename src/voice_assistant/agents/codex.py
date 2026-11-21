@@ -10,16 +10,36 @@ from .progress import stream_codex
 @dataclass
 class CodexAgent(Agent):
     full_access: bool = False
+    model: str | None = None
+    reasoning_effort: str | None = None
 
     def ask(self, prompt: str, *, on_progress: Callable[[str], None] | None = None) -> str:
         # '-' feeds stdin; no shell invocation or command interpolation.
-        permissions = (
-            ["--dangerously-bypass-approvals-and-sandbox"]
-            if self.full_access else ["--sandbox", "read-only"]
+        if self.full_access:
+            permissions = ["--dangerously-bypass-approvals-and-sandbox"]
+            access = (
+                "You are running locally as the user's Linux account with Codex's sandbox disabled. "
+                "Your working directory is your starting location. You can use tools to read and "
+                "write elsewhere, including Downloads, subject to the account's permissions. "
+                "For Downloads, use `xdg-user-dir DOWNLOAD` if available, or `$HOME/Downloads`."
+            )
+        else:
+            permissions = ["--sandbox", "read-only"]
+            access = "You are running locally in Codex's read-only sandbox. You can use tools to inspect files."
+        prompt = (
+            f"Local tool access: {access}\n"
+            "When the user asks you to perform a local action, do it in this turn if permitted. "
+            "Check access with tools when unsure. If blocked, explain the specific permission or tool error. "
+            "Verify the result before reporting success.\n\n"
+            f"{prompt}"
         )
         args = [
             self.executable, "exec", "--json", *permissions, "--skip-git-repo-check",
         ]
+        if self.model is not None:
+            args.extend(["--model", self.model])
+        if self.reasoning_effort is not None:
+            args.extend(["--config", f"model_reasoning_effort={json.dumps(self.reasoning_effort)}"])
         args.append("-")
         if on_progress is None:
             output = self.run_process(args, stdin=prompt)

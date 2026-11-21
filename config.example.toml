@@ -2,6 +2,8 @@
 [agent]
 provider = "codex" # "codex" or "claude"
 codex_full_access = false # true runs Codex without sandboxing or approval prompts.
+# codex_model = "gpt-6-luna"
+# codex_reasoning_effort = "low"
 working_directory = "." # relative to this config file, or absolute
 max_history_turns = 8
 max_history_chars = 4000 # Prior conversation only. Set to 0 for a fresh start on every turn.
@@ -15,7 +17,7 @@ end_silence_ms = 1000 # Quiet time after speech before sending in wake mode.
 [stt]
 backend = "whisper_cpp"
 model = "models/ggml-small.bin" # relative to this config file, or absolute
-language = "auto" # or a language code such as "en" or "es"
+language = "en" # Spoken input. Use "auto" for language detection.
 timeout_seconds = 90
 
 [tts]

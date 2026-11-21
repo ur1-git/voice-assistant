@@ -17,17 +17,19 @@ class CommandError(RuntimeError):
 class LocalCommand:
     argv: tuple[str, ...]
     reply: str
+    capture_output: bool = True
 
     def run(self, directory: Path, timeout: int) -> None:
+        output = subprocess.PIPE if self.capture_output else subprocess.DEVNULL
         try:
             result = subprocess.run(
                 self.argv, cwd=directory, stdin=subprocess.DEVNULL,
-                capture_output=True, text=True, errors="replace", timeout=timeout,
+                stdout=output, stderr=output, text=True, errors="replace", timeout=timeout,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise CommandError(f"Local command failed: {exc}") from exc
         if result.returncode:
-            detail = (result.stderr or result.stdout).strip()[-500:]
+            detail = (result.stderr or result.stdout or "").strip()[-500:]
             raise CommandError(f"Local command exited {result.returncode}. {detail}".rstrip())
 
 

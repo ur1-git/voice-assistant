@@ -51,7 +51,7 @@ voice-assistant ask --agent claude "Explain what this project does"
 
 ## Microphone input
 
-Use a running PipeWire desktop session with `pw-record`, and put `whisper-cli` on your `PATH`. Follow the upstream build and model instructions to set up whisper.cpp. Set `stt.model` in `config.toml` to the downloaded GGML model file. A multilingual model such as `ggml-small.bin` supports language detection with `stt.language = "auto"`. You can also set a language code such as `"en"` or `"es"`. [whisper.cpp build and model instructions](https://github.com/ggml-org/whisper.cpp#quick-start)
+Use a running PipeWire desktop session with `pw-record`, and put `whisper-cli` on your `PATH`. Follow the upstream build and model instructions to set up whisper.cpp. Set `stt.model` in `config.toml` to the downloaded GGML model file. Whisper expects English by default (`stt.language = "en"`). With a multilingual model such as `ggml-small.bin`, you can set another input language or use `"auto"` for language detection. Agent replies are always requested in English. [whisper.cpp build and model instructions](https://github.com/ggml-org/whisper.cpp#quick-start)
 
 ```bash
 voice-assistant voice
@@ -134,9 +134,15 @@ reply = "Shutting down."
 
 Use a string for one activation phrase or a list for several. Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user.
 
-Voice mode checks the complete transcript against a dictionary before calling the AI. Matching ignores case, extra whitespace, and punctuation at the edges. A match runs only the code saved in your config. Unmatched requests follow the normal AI flow, including spoken progress. Restart the assistant after editing the file.
+Voice mode checks your configured commands and learned shortcuts before calling the AI. Matching uses the complete transcript and ignores case, extra whitespace, and punctuation at the edges. Configured commands take precedence. Restart the assistant after editing `config.toml`.
 
 The assistant finishes saying the configured reply before running the command. Interrupt its announcement to cancel the pending command.
+
+### Learned app shortcuts
+
+Say “Open Spotify” or “Launch Firefox” after the wake phrase. For an unfamiliar phrase that matches an installed desktop app, the AI can choose its launcher. The assistant opens it through `gio launch` and remembers the phrase after a successful launch. Say the same phrase again and the assistant runs it locally without an AI request, including after a restart.
+
+This works with installed `.desktop` launchers, including Flatpak exports, when `gio` is available. Learned shortcuts store desktop launcher IDs and activation phrases. They are saved per config in `$XDG_STATE_HOME/voice-assistant`, which defaults to `~/.local/state/voice-assistant`. Unsupported requests continue through the normal AI flow.
 
 ## Agent access
 

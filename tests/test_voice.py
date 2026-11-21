@@ -1,6 +1,8 @@
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+import os
 from pathlib import Path
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -10,6 +12,47 @@ from voice_assistant.stt.whisper_cpp import TranscriptionError
 
 
 class VoiceTests(unittest.TestCase):
+    def test_app_launch_is_learned_and_replays_without_ai_after_restart(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "config.toml"
+            config.write_text('[stt]\nmodel = "model.bin"\n', encoding="utf-8")
+            config.with_name("model.bin").touch()
+            applications = root / "applications"
+            applications.mkdir()
+            desktop = applications / "test-music.desktop"
+            desktop.write_text(
+                "[Desktop Entry]\nType=Application\nName=Test Music (Launcher)\nExec=/usr/bin/true\n",
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            with (
+                patch.dict(os.environ, {"XDG_DATA_HOME": directory, "XDG_STATE_HOME": directory}),
+                patch("shutil.which", side_effect=lambda tool: f"/fake/{tool}"),
+                patch("builtins.input", side_effect=["", "", "", "/quit", "", "/quit"]),
+                patch("voice_assistant.main.record_wav"),
+                patch("voice_assistant.main.transcribe", side_effect=[
+                    "Open Test Music", "Open Test Music.", "OPEN Test Music!", "Open Test Music.",
+                ]),
+                patch("voice_assistant.main.CodexAgent.ask", side_effect=[
+                    "LAUNCH_DESKTOP_APP invented.desktop", "LAUNCH_DESKTOP_APP test-music.desktop",
+                ]) as ask,
+                patch("voice_assistant.core.commands.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run,
+                redirect_stdout(stdout),
+            ):
+                arguments = ["--config", str(config), "voice"]
+                self.assertEqual(main(arguments), 0)
+                self.assertEqual(main(arguments), 0)
+
+            self.assertEqual(ask.call_count, 2)
+            self.assertIn('"test-music.desktop": "Test Music (Launcher)"', ask.call_args.args[0])
+            self.assertEqual(run.call_count, 3)
+            for launch in run.call_args_list:
+                self.assertEqual(launch.args[0], ("/fake/gio", "launch", str(desktop)))
+                self.assertEqual(launch.kwargs["stdout"], subprocess.DEVNULL)
+                self.assertEqual(launch.kwargs["stderr"], subprocess.DEVNULL)
+            self.assertIn("I couldn't match that request to an installed app.", stdout.getvalue())
+
     def test_local_commands_match_complete_phrases_and_only_unmatched_turns_use_agent(self):
         with TemporaryDirectory() as directory:
             config = Path(directory) / "config.toml"
@@ -39,8 +82,8 @@ class VoiceTests(unittest.TestCase):
                 patch("builtins.input", side_effect=["", "", "", "", "/quit"]),
                 patch("voice_assistant.main.record_wav"),
                 patch("voice_assistant.main.transcribe", side_effect=[
-                    "  Shut   Down   NOW! ", "shutdown now", "What does shutdown now do?", "test failure",
-                ]),
+                    "  Shut   Down   NOW! ", "shutdown now", "Você pode explicar?", "test failure",
+                ]) as transcribe,
                 patch("voice_assistant.main.KokoroSpeaker") as speaker,
                 patch("voice_assistant.main.ClaudeAgent.ask", return_value="An explanation.") as ask,
                 redirect_stdout(stdout),
@@ -52,7 +95,11 @@ class VoiceTests(unittest.TestCase):
             self.assertEqual(config.with_name("tested").read_text(), "ran\n")
             self.assertEqual(len(announcements), 2)
             self.assertEqual(ask.call_count, 1)
-            self.assertTrue(ask.call_args.args[0].endswith("What does shutdown now do?"))
+            prompt = ask.call_args.args[0]
+            self.assertIn("Always reply in English", prompt)
+            self.assertIn("Your entire reply will be read aloud", prompt)
+            self.assertTrue(prompt.endswith("Current user message:\nVocê pode explicar?"))
+            self.assertEqual(transcribe.call_args.kwargs["language"], "en")
             self.assertIn("Local command canceled.", stdout.getvalue())
             self.assertIn("The local command failed.", stdout.getvalue())
             self.assertIn("Local command exited 3.", stderr.getvalue())
