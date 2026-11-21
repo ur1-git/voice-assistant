@@ -18,28 +18,42 @@ class VoiceTests(unittest.TestCase):
                 '[agent]\nprovider = "claude"\n'
                 '[stt]\nmodel = "model.bin"\n'
                 '[[commands]]\nactivation = "shutdown now"\n'
-                'code = "bash: touch tested"\nreply = "Local command done."\n'
+                'code = "bash: echo ran >> tested"\nreply = "Running local command."\n'
                 '[[commands]]\nactivation = "test failure"\n'
                 'code = "python: raise SystemExit(3)"\n',
                 encoding="utf-8",
             )
             stdout, stderr = StringIO(), StringIO()
+            announcements = []
+
+            def speak(message, *, interrupt):
+                if message != "Running local command.":
+                    return True
+                announcements.append(message)
+                if len(announcements) == 1:
+                    self.assertFalse(config.with_name("tested").exists())
+                return len(announcements) == 1
+
             with (
                 patch("shutil.which", return_value="/fake/tool"),
-                patch("builtins.input", side_effect=["", "", "", "/quit"]),
+                patch("builtins.input", side_effect=["", "", "", "", "/quit"]),
                 patch("voice_assistant.main.record_wav"),
                 patch("voice_assistant.main.transcribe", side_effect=[
-                    "  Shutdown   NOW! ", "What does shutdown now do?", "test failure",
+                    "  Shutdown   NOW! ", "shutdown now", "What does shutdown now do?", "test failure",
                 ]),
+                patch("voice_assistant.main.KokoroSpeaker") as speaker,
                 patch("voice_assistant.main.ClaudeAgent.ask", return_value="An explanation.") as ask,
                 redirect_stdout(stdout),
                 redirect_stderr(stderr),
             ):
-                self.assertEqual(main(["--config", str(config), "voice"]), 0)
+                speaker.return_value.speak.side_effect = speak
+                self.assertEqual(main(["--config", str(config), "voice", "--speak"]), 0)
 
-            self.assertTrue(config.with_name("tested").is_file())
-            ask.assert_called_once_with("What does shutdown now do?")
-            self.assertIn("Local command done.", stdout.getvalue())
+            self.assertEqual(config.with_name("tested").read_text(), "ran\n")
+            self.assertEqual(len(announcements), 2)
+            self.assertEqual(ask.call_count, 1)
+            self.assertTrue(ask.call_args.args[0].endswith("What does shutdown now do?"))
+            self.assertIn("Local command canceled.", stdout.getvalue())
             self.assertIn("The local command failed.", stdout.getvalue())
             self.assertIn("Local command exited 3.", stderr.getvalue())
 

@@ -21,13 +21,6 @@ from .tts.kokoro import KokoroSpeaker, SpeechError
 def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
     speaker = KokoroSpeaker(config.kokoro) if config.kokoro is not None else None
 
-    def announce_progress(message: str) -> None:
-        print(f"Progress> {message}", flush=True)
-        try:
-            speaker.speak(message)
-        except (SpeechError, OSError) as exc:
-            print(f"Progress playback failed: {exc}", file=sys.stderr)
-
     detector = (
         WakeWordDetector(config.wake_model, config.wake_threshold)
         if config.wake_model is not None else None
@@ -36,6 +29,32 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
         EndOfSpeechRecorder(config.wake_model.with_name("silero_vad.onnx"), config.end_silence_ms)
         if config.wake_model is not None else None
     )
+
+    def interrupt_playback(listening):
+        try:
+            return detector.wait(config.device, listening=listening)
+        except (RecordingError, OSError) as exc:
+            print(f"Playback interruption unavailable: {exc}", file=sys.stderr)
+            return False
+
+    def speak(message: str) -> bool:
+        if speaker is None:
+            return True
+        try:
+            if speaker.speak(message, interrupt=interrupt_playback if detector else None):
+                return True
+        except KeyboardInterrupt:
+            pass
+        print("Speech stopped.", flush=True)
+        return False
+
+    def announce_progress(message: str) -> None:
+        print(f"Progress> {message}", flush=True)
+        try:
+            speak(message)
+        except (SpeechError, OSError) as exc:
+            print(f"Progress playback failed: {exc}", file=sys.stderr)
+
     while True:
         try:
             if detector:
@@ -86,19 +105,20 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig) -> None:
                     on_progress=announce_progress if speaker is not None else None,
                 )
             else:
+                print("Assistant> " + command.reply + "\n", flush=True)
+                if not speak(command.reply):
+                    print("Local command canceled.", flush=True)
+                    continue
                 print("Running local command.", flush=True)
                 try:
-                    reply = command.run(config.agent.working_directory, config.agent.timeout_seconds)
+                    command.run(config.agent.working_directory, config.agent.timeout_seconds)
                 except CommandError as exc:
                     print(f"Error: {exc}", file=sys.stderr)
-                    reply = "The local command failed."
+                    print("Assistant> The local command failed.", flush=True)
+                    speak("The local command failed.")
+                continue
             print("Assistant> " + reply + "\n", flush=True)
-            if speaker:
-                print("Speaking… Press Ctrl+C to stop.", flush=True)
-                try:
-                    speaker.speak(reply)
-                except KeyboardInterrupt:
-                    print("\nSpeech stopped.")
+            speak(reply)
         except (EOFError, KeyboardInterrupt):
             print()
             return

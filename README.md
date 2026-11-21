@@ -75,7 +75,7 @@ Place `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the [Kokoro ONNX release](ht
 voice-assistant voice --speak
 ```
 
-The app prints each reply before speaking it. Ctrl+C during synthesis or playback returns to the recording prompt. The portable bundle currently uses text replies.
+The app prints each reply before speaking it. In wake mode, say “Hey Jarvis” over playback to stop the current speech. Say it again to start a new request once the assistant is listening. Interrupting a progress update stops that announcement while Codex keeps working. Ctrl+C also stops speech in a terminal. The portable bundle currently uses text replies.
 
 With Codex and spoken replies enabled, Kokoro also reads short progress updates from the current request. The updates use local speech synthesis and stay out of the conversation history.
 
@@ -135,6 +135,8 @@ reply = "Shutting down."
 Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user. Add another block with a different activation for an alias.
 
 Voice mode checks the complete transcript against a dictionary before calling the AI. Matching ignores case, extra whitespace, and punctuation at the edges. A match runs only the code saved in your config. Unmatched requests follow the normal AI flow, including spoken progress. Restart the assistant after editing the file.
+
+The assistant finishes saying the configured reply before running the command. Interrupt its announcement to cancel the pending command.
 
 ## Agent access
 

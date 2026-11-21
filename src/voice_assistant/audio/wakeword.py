@@ -1,7 +1,10 @@
 """Listen for a local openWakeWord model using PipeWire PCM capture."""
 from array import array
+from collections.abc import Callable
 import math
+import os
 from pathlib import Path
+from selectors import DefaultSelector, EVENT_READ
 import subprocess
 import wave
 
@@ -32,14 +35,25 @@ class WakeWordDetector:
         except Exception as exc:
             raise ValueError(f"Could not initialize the wake-word model: {exc}") from exc
 
-    def wait(self, device: str) -> None:
+    def wait(self, device: str, *, listening: Callable[[], bool] = lambda: True) -> bool:
         self.model.reset()
-        with pcm_capture(device) as stream:
-            while len(chunk := stream.read(2560)) == 2560:
-                samples = self.frombuffer(chunk, dtype="<i2")
+        pending = bytearray()
+        with pcm_capture(device) as stream, DefaultSelector() as selector:
+            selector.register(stream, EVENT_READ)
+            while listening():
+                if not selector.select(0.1):
+                    continue
+                chunk = os.read(stream.fileno(), 2560 - len(pending))
+                if not chunk:
+                    raise RecordingError("PipeWire stopped while listening for the wake word")
+                pending.extend(chunk)
+                if len(pending) < 2560:
+                    continue
+                samples = self.frombuffer(bytes(pending), dtype="<i2")
+                pending.clear()
                 if max(self.model.predict(samples).values()) >= self.threshold:
-                    return
-            raise RecordingError("PipeWire stopped while listening for the wake word")
+                    return True
+        return False
 
 
 def play_chime(path: Path, *, waking: bool) -> None:

@@ -1,4 +1,5 @@
 """Synthesize replies locally and play them through PipeWire."""
+from collections.abc import Callable
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -54,12 +55,19 @@ class KokoroSpeaker:
         except Exception as exc:
             raise SpeechError(f"Kokoro synthesis failed: {exc}") from exc
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, *, interrupt: Callable[[Callable[[], bool]], bool] | None = None) -> bool:
         if not text.strip():
-            return
+            return True
         with TemporaryDirectory(prefix="voice-assistant-tts-") as directory:
             output = Path(directory) / "reply.wav"
             self.synthesize(text, output)
-            result = subprocess.run(["pw-play", str(output)], check=False)
-            if result.returncode:
-                raise SpeechError(f"pw-play failed (exit {result.returncode})")
+            with subprocess.Popen(["pw-play", str(output)], stdin=subprocess.DEVNULL) as playback:
+                try:
+                    if interrupt is not None and interrupt(lambda: playback.poll() is None):
+                        return False
+                    if status := playback.wait():
+                        raise SpeechError(f"pw-play failed (exit {status})")
+                finally:
+                    if playback.poll() is None:
+                        playback.kill()
+        return True

@@ -18,7 +18,7 @@ class LocalCommand:
     argv: tuple[str, ...]
     reply: str
 
-    def run(self, directory: Path, timeout: int) -> str:
+    def run(self, directory: Path, timeout: int) -> None:
         try:
             result = subprocess.run(
                 self.argv, cwd=directory, stdin=subprocess.DEVNULL,
@@ -29,7 +29,6 @@ class LocalCommand:
         if result.returncode:
             detail = (result.stderr or result.stdout).strip()[-500:]
             raise CommandError(f"Local command exited {result.returncode}. {detail}".rstrip())
-        return self.reply
 
 
 def load_commands(entries: object) -> dict[str, LocalCommand]:
@@ -42,7 +41,7 @@ def load_commands(entries: object) -> dict[str, LocalCommand]:
             raise ValueError("Each commands entry must be a TOML table")
         activation = entry.get("activation")
         code = entry.get("code")
-        reply = entry.get("reply", "Done.")
+        reply = entry.get("reply", "Running the command.")
         if not isinstance(activation, str) or not (key := normalize_activation(activation)):
             raise ValueError("commands.activation must be a non-empty phrase")
         if key in commands:
