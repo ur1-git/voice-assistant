@@ -40,12 +40,13 @@ def load_commands(entries: object) -> dict[str, LocalCommand]:
         if not isinstance(entry, dict):
             raise ValueError("Each commands entry must be a TOML table")
         activation = entry.get("activation")
+        aliases = entry.get("aliases", [])
         code = entry.get("code")
         reply = entry.get("reply", "Running the command.")
-        if not isinstance(activation, str) or not (key := normalize_activation(activation)):
+        if not isinstance(activation, str) or not normalize_activation(activation):
             raise ValueError("commands.activation must be a non-empty phrase")
-        if key in commands:
-            raise ValueError(f"Duplicate command activation: {activation}")
+        if not isinstance(aliases, list):
+            raise ValueError(f"commands.aliases for {activation} must be a list of phrases")
         if not isinstance(code, str):
             raise ValueError(f"Set commands.code for {activation}")
         language, _, source = code.partition(":")
@@ -54,5 +55,11 @@ def load_commands(entries: object) -> dict[str, LocalCommand]:
             raise ValueError(f"commands.code for {activation} must start with 'bash:' or 'python:'")
         if not isinstance(reply, str) or not reply.strip():
             raise ValueError(f"commands.reply for {activation} must be a non-empty string")
-        commands[key] = LocalCommand((interpreter, "-c", source.lstrip()), reply)
+        command = LocalCommand((interpreter, "-c", source.lstrip()), reply)
+        for phrase in [activation, *aliases]:
+            if not isinstance(phrase, str) or not (key := normalize_activation(phrase)):
+                raise ValueError(f"commands.aliases for {activation} must contain non-empty phrases")
+            if key in commands:
+                raise ValueError(f"Duplicate command phrase: {phrase}")
+            commands[key] = command
     return commands

@@ -18,6 +18,7 @@ class VoiceTests(unittest.TestCase):
                 '[agent]\nprovider = "claude"\n'
                 '[stt]\nmodel = "model.bin"\n'
                 '[[commands]]\nactivation = "shutdown now"\n'
+                'aliases = ["shut down now"]\n'
                 'code = "bash: echo ran >> tested"\nreply = "Running local command."\n'
                 '[[commands]]\nactivation = "test failure"\n'
                 'code = "python: raise SystemExit(3)"\n',
@@ -39,7 +40,7 @@ class VoiceTests(unittest.TestCase):
                 patch("builtins.input", side_effect=["", "", "", "", "/quit"]),
                 patch("voice_assistant.main.record_wav"),
                 patch("voice_assistant.main.transcribe", side_effect=[
-                    "  Shutdown   NOW! ", "shutdown now", "What does shutdown now do?", "test failure",
+                    "  Shut   Down   NOW! ", "shutdown now", "What does shutdown now do?", "test failure",
                 ]),
                 patch("voice_assistant.main.KokoroSpeaker") as speaker,
                 patch("voice_assistant.main.ClaudeAgent.ask", return_value="An explanation.") as ask,
