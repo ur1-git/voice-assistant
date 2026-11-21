@@ -127,13 +127,12 @@ Add a `[[commands]]` block to your local `config.toml` for each phrase. For exam
 
 ```toml
 [[commands]]
-activation = "shutdown now"
-aliases = ["shut down now"]
+activation = ["shutdown now", "shut down now"]
 code = "bash: /usr/bin/systemctl --no-ask-password poweroff"
 reply = "Shutting down."
 ```
 
-Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user. The optional `aliases` list adds alternate phrases for the same command.
+Use a string for one activation phrase or a list for several. Use `python:` to run Python code in the assistant's environment, including calls to modules installed there. Commands run from `agent.working_directory` as your Linux user.
 
 Voice mode checks the complete transcript against a dictionary before calling the AI. Matching ignores case, extra whitespace, and punctuation at the edges. A match runs only the code saved in your config. Unmatched requests follow the normal AI flow, including spoken progress. Restart the assistant after editing the file.
 

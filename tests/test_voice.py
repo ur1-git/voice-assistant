@@ -17,8 +17,7 @@ class VoiceTests(unittest.TestCase):
             config.write_text(
                 '[agent]\nprovider = "claude"\n'
                 '[stt]\nmodel = "model.bin"\n'
-                '[[commands]]\nactivation = "shutdown now"\n'
-                'aliases = ["shut down now"]\n'
+                '[[commands]]\nactivation = ["shutdown now", "shut down now"]\n'
                 'code = "bash: echo ran >> tested"\nreply = "Running local command."\n'
                 '[[commands]]\nactivation = "test failure"\n'
                 'code = "python: raise SystemExit(3)"\n',
