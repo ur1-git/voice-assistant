@@ -75,7 +75,7 @@ Place `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the [Kokoro ONNX release](ht
 voice-assistant voice --speak
 ```
 
-The app prints each reply before speaking it. In wake mode, say “Hey Jarvis” over playback to stop the current speech. Say it again to start a new request once the assistant is listening. Interrupting a progress update stops that announcement while Codex keeps working. Ctrl+C also stops speech in a terminal. The portable bundle currently uses text replies.
+The app prints each reply before speaking it. In wake mode, say your configured wake phrase over playback to stop the current speech. Say it again to start a new request once the assistant is listening. Interrupting a progress update stops that announcement while Codex keeps working. Ctrl+C also stops speech in a terminal. The portable bundle currently uses text replies.
 
 With Codex and spoken replies enabled, Kokoro also reads short progress updates from the current request. The updates use local speech synthesis and stay out of the conversation history.
 
@@ -93,11 +93,11 @@ for model in hey_jarvis_v0.1 embedding_model melspectrogram silero_vad; do
 done
 ```
 
-Run `./voice-assistant` from the project folder to start wake mode with spoken replies. The launcher uses the project's `.venv` and `config.toml`. Say “Hey Jarvis” and wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. You have five seconds to start speaking after waking the assistant. If a reply asks for information it needs to continue, the rising chime plays again and you have three seconds to start answering without repeating the wake phrase. After a complete reply, an interrupted reply, or a recording with no speech, the assistant waits for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
+Run `./voice-assistant` from the project folder to start wake mode with spoken replies. The launcher uses the project's `.venv` and `config.toml`. Say your configured wake phrase (“Hey Jarvis” by default) and wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. You have five seconds to start speaking after waking the assistant. If a reply asks for information it needs to continue, the rising chime plays again and you have three seconds to start answering without repeating the wake phrase. After a complete reply, an interrupted reply, or a recording with no speech, the assistant waits for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
 
 The Silero ONNX model goes next to the wake model and uses the same ONNX Runtime already installed for openWakeWord. Set `audio.end_silence_ms` in `config.toml` to give yourself more or less pause time before sending. The existing `audio.max_record_seconds` still caps recordings.
 
-The default detection threshold is 0.5. If you hear too many false wakes, raise `wakeword.threshold` in `config.toml`. If it misses your phrase, try lowering it and check for false wakes. Listening and detection run locally. OpenWakeWord 0.6.0 declares a TensorFlow Lite dependency on Linux, so the ONNX setup above installs its dependencies explicitly.
+To use a custom openWakeWord ONNX model, place it in `models/openwakeword` and set `wakeword.model` in `config.toml`. The app logs the loaded model and threshold on startup. The default detection threshold is 0.5. If you hear too many false wakes, raise `wakeword.threshold` in `config.toml`. If it misses your phrase, try lowering it and check for false wakes. Listening and detection run locally. OpenWakeWord 0.6.0 declares a TensorFlow Lite dependency on Linux, so the ONNX setup above installs its dependencies explicitly.
 
 ## Milestones
 

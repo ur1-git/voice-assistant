@@ -33,6 +33,8 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
         EndOfSpeechRecorder(config.wake_model.with_name("silero_vad.onnx"), config.end_silence_ms)
         if config.wake_model is not None else None
     )
+    if config.wake_model is not None:
+        print(f"Wake model: {config.wake_model.name} (threshold {config.wake_threshold:g}).", flush=True)
 
     def interrupt_playback(listening):
         try:
@@ -69,7 +71,7 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
         listen_again = False
         try:
             if detector and not follow_up:
-                print("Listening for Hey Jarvis. Press Ctrl+C to quit.", flush=True)
+                print("Listening for the wake word. Press Ctrl+C to quit.", flush=True)
                 try:
                     detector.wait(config.device)
                 except RecordingError as exc:
@@ -157,7 +159,7 @@ def main(argv=None, *, agent_executables: dict[str, str] | None = None) -> int:
         command.add_argument("--agent", choices=("codex", "claude"))
         if name == "voice":
             command.add_argument("--speak", action="store_true", help="Read replies aloud with Kokoro")
-            command.add_argument("--wake", action="store_true", help="Start recording when you say Hey Jarvis")
+            command.add_argument("--wake", action="store_true", help="Start recording on the configured wake word")
         if name == "ask":
             command.add_argument("message")
     args = parser.parse_args(argv)
