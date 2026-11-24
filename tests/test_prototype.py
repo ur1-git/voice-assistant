@@ -62,6 +62,8 @@ class PrototypeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cfg = load_config(Path(directory) / "missing.toml")
             self.assertEqual(cfg.provider, "codex")
+            self.assertEqual(cfg.codex_model, "gpt-6.2-sol")
+            self.assertEqual(cfg.codex_reasoning_effort, "low")
             self.assertEqual(cfg.working_directory, Path(directory))
 
     def test_codex_events(self):

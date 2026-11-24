@@ -2,7 +2,7 @@
 [agent]
 provider = "codex" # "codex" or "claude"
 codex_full_access = false # true runs Codex without sandboxing or approval prompts.
-# codex_model = "gpt-6-luna"
+# codex_model = "gpt-6.2-sol"
 # codex_reasoning_effort = "low"
 working_directory = "." # relative to this config file, or absolute
 max_history_turns = 8

@@ -14,8 +14,8 @@ class AgentConfig:
     timeout_seconds: int = 180
     max_history_chars: int = 4000
     codex_full_access: bool = False
-    codex_model: str | None = None
-    codex_reasoning_effort: str | None = None
+    codex_model: str = "gpt-6.2-sol"
+    codex_reasoning_effort: str = "low"
 
 
 @dataclass(frozen=True)
@@ -83,13 +83,13 @@ def _agent_config(raw: dict, path: Path) -> AgentConfig:
     codex_full_access = data.get("codex_full_access", False)
     if type(codex_full_access) is not bool:
         raise ValueError("agent.codex_full_access must be true or false")
-    codex_model = data.get("codex_model")
-    codex_reasoning_effort = data.get("codex_reasoning_effort")
+    codex_model = data.get("codex_model", AgentConfig.codex_model)
+    codex_reasoning_effort = data.get("codex_reasoning_effort", AgentConfig.codex_reasoning_effort)
     for name, value in (
         ("codex_model", codex_model),
         ("codex_reasoning_effort", codex_reasoning_effort),
     ):
-        if value is not None and (not isinstance(value, str) or not value.strip()):
+        if not isinstance(value, str) or not value.strip():
             raise ValueError(f"agent.{name} must be a non-empty string")
     return AgentConfig(
         provider, directory, turns, timeout, history_chars, codex_full_access,
