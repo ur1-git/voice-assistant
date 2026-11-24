@@ -34,6 +34,21 @@ class PrototypeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Pipeline(FakeAgent()).respond("   ")
 
+    def test_only_a_boolean_true_in_a_valid_voice_reply_reopens_capture(self):
+        pipeline = Pipeline(FakeAgent())
+        for response, text, listen_again in (
+            ('{"reply":"Which folder?","listen_again":true}', "Which folder?", True),
+            ('{"reply":"Which folder?","listen_again":"true"}', "Which folder?", False),
+            ('{"reply":"Which folder?"}', "Which folder?", False),
+            ('{"listen_again":true}', "I couldn't read the reply.", False),
+            ("A plain-text reply.", "A plain-text reply.", False),
+        ):
+            with self.subTest(response=response), patch.object(pipeline.agent, "ask", return_value=response):
+                reply = pipeline.respond_to_voice("Open it", allow_follow_up=True)
+                self.assertEqual(reply.text, text)
+                self.assertIs(reply.listen_again, listen_again)
+                self.assertEqual(pipeline.session.history[-1], ("Open it", text))
+
     def test_history_budget_keeps_latest_turn_and_full_current_message(self):
         fake = FakeAgent()
         pipeline = Pipeline(fake, max_history_chars=40)

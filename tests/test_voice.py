@@ -199,3 +199,52 @@ class VoiceTests(unittest.TestCase):
                     "model": model, "language": "es", "timeout_seconds": 45,
                 })
                 self.assertFalse(audio.parent.exists())
+
+    def test_wake_follow_up_reuses_recorder_and_returns_to_idle(self):
+        with TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.with_name("model.bin").touch()
+            config.write_text('[agent]\nprovider = "claude"\n[stt]\nmodel = "model.bin"\n', encoding="utf-8")
+            stdout = StringIO()
+            with (
+                patch("shutil.which", return_value="/fake/tool"),
+                patch("voice_assistant.main.WakeWordDetector") as wake,
+                patch("voice_assistant.main.EndOfSpeechRecorder") as recorder,
+                patch("voice_assistant.main.KokoroSpeaker") as speaker,
+                patch("voice_assistant.main.play_chime"),
+                patch("voice_assistant.main.transcribe", side_effect=[
+                    "First request", "Downloads", "Second request", "Third request",
+                ]) as transcribe,
+                patch("voice_assistant.main.ClaudeAgent.ask", side_effect=[
+                    '{"reply":"Which folder?","listen_again":true}',
+                    '{"reply":"Done.","listen_again":false}',
+                    '{"reply":"What format?","listen_again":true}',
+                    '{"reply":"Which file?","listen_again":true}',
+                ]) as ask,
+                redirect_stdout(stdout),
+            ):
+                wake.return_value.wait.side_effect = [True, True, True, KeyboardInterrupt]
+                speaker.return_value.speak.side_effect = [True, True, True, False]
+                recordings = iter([True, True, True, False, True])
+                wake_counts = []
+
+                def record(*args, **kwargs):
+                    wake_counts.append(wake.return_value.wait.call_count)
+                    return next(recordings)
+
+                recorder.return_value.record.side_effect = record
+                self.assertEqual(main(["--config", str(config), "voice", "--wake", "--speak"]), 0)
+
+            self.assertEqual(wake_counts, [1, 1, 2, 2, 3])
+            self.assertEqual(
+                [call.kwargs["start_timeout_seconds"] for call in recorder.return_value.record.call_args_list],
+                [5, 3, 5, 3, 5],
+            )
+            self.assertEqual(transcribe.call_count, 4)
+            self.assertIn("Assistant: Which folder?", ask.call_args_list[1].args[0])
+            self.assertIn("Current user message:\nDownloads", ask.call_args_list[1].args[0])
+            self.assertEqual(
+                [call.args[0] for call in speaker.return_value.speak.call_args_list],
+                ["Which folder?", "Done.", "What format?", "Which file?"],
+            )
+            self.assertIn("No speech detected.", stdout.getvalue())

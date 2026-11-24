@@ -93,7 +93,7 @@ for model in hey_jarvis_v0.1 embedding_model melspectrogram silero_vad; do
 done
 ```
 
-Run `./voice-assistant` from the project folder to start wake mode with spoken replies. The launcher uses the project's `.venv` and `config.toml`. Say “Hey Jarvis” and wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. If you never start speaking, the app returns to listening after five seconds without sending a request. After the reply, the app listens for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
+Run `./voice-assistant` from the project folder to start wake mode with spoken replies. The launcher uses the project's `.venv` and `config.toml`. Say “Hey Jarvis” and wait for the rising chime before speaking. Silero VAD sends the recording after about one second of quiet following speech. Press Ctrl+C during capture to send immediately. A falling chime marks the end of capture. You have five seconds to start speaking after waking the assistant. If a reply asks for information it needs to continue, the rising chime plays again and you have three seconds to start answering without repeating the wake phrase. After a complete reply, an interrupted reply, or a recording with no speech, the assistant waits for the next wake phrase. Ctrl+C while waiting for the wake phrase exits the app.
 
 The Silero ONNX model goes next to the wake model and uses the same ONNX Runtime already installed for openWakeWord. Set `audio.end_silence_ms` in `config.toml` to give yourself more or less pause time before sending. The existing `audio.max_record_seconds` still caps recordings.
 
@@ -104,8 +104,8 @@ The default detection threshold is 0.5. If you hear too many false wakes, raise 
 1. **Text prototype.** Send a typed question and follow-up to either backend, selected through TOML or the CLI.
 2. **Microphone input.** Trigger a recording from the terminal and see the local Whisper transcript and the agent’s answer. Evaluate Vulkan acceleration for Whisper on the Radeon RX 9070 XT.
 3. **Spoken replies.** Enable local Kokoro synthesis and PipeWire playback with `voice --speak`. Ctrl+C interrupts speech and returns to the recording prompt.
-4. **Hands-free loop.** OpenWakeWord starts recording and Silero VAD sends the request when the user stops speaking. Chimes mark the start and end. Wake-word listening resumes after playback.
-5. **Spoken stop command.** Recognize a dedicated stop word during reply playback and return to listening.
+4. **Hands-free loop.** OpenWakeWord starts recording and Silero VAD sends the request when the user stops speaking. Chimes mark the start and end. The agent can request a follow-up recording after playback.
+5. **Spoken stop command (planned).** Detect a reserved phrase such as “Stop now” or “Hey Nova, stop” locally during playback and request capture. Stop playback, discard any unfinished recording, clear any pending follow-up, and return to wake-word listening.
 6. **Conversational interruption.** Let the user speak naturally over a reply, stop playback promptly, and capture the interruption as the next turn. Account for speaker echo so the assistant’s own voice does not trigger an interruption.
 7. **Desktop service.** Start at graphical login through a systemd user service. Persistent sessions are planned separately from the current in-memory history.
 

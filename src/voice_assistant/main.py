@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from .agents.base import AgentError
 from .agents.claude import ClaudeAgent
 from .agents.codex import CodexAgent
-from .audio.end_of_speech import EndOfSpeechRecorder
+from .audio.end_of_speech import START_TIMEOUT_SECONDS, EndOfSpeechRecorder
 from .audio.pipewire import RecordingError, record_wav
 from .audio.wakeword import WakeWordDetector, play_chime
 from .core.commands import CommandError, normalize_activation
@@ -17,6 +17,9 @@ from .core.learned_commands import LearnedCommands
 from .core.pipeline import Pipeline
 from .stt.whisper_cpp import TranscriptionError, transcribe
 from .tts.kokoro import KokoroSpeaker, SpeechError
+
+
+FOLLOW_UP_START_TIMEOUT_SECONDS = 3
 
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: LearnedCommands) -> None:
@@ -60,16 +63,19 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
         except (SpeechError, OSError) as exc:
             print(f"Progress playback failed: {exc}", file=sys.stderr)
 
+    listen_again = False
     while True:
+        follow_up = listen_again
+        listen_again = False
         try:
-            if detector:
+            if detector and not follow_up:
                 print("Listening for Hey Jarvis. Press Ctrl+C to quit.", flush=True)
                 try:
                     detector.wait(config.device)
                 except RecordingError as exc:
                     print(f"Error: {exc}", file=sys.stderr)
                     return
-            else:
+            elif detector is None:
                 choice = input("Press Enter to record or type /quit to exit. ").strip()
                 if choice in ("/quit", "/exit"):
                     return
@@ -83,8 +89,10 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                     play_chime(chime, waking=True)
                 if automatic_recorder:
                     print("Recording. Pause to send or press Ctrl+C to send now.", flush=True)
+                    start_timeout = FOLLOW_UP_START_TIMEOUT_SECONDS if follow_up else START_TIMEOUT_SECONDS
                     captured = automatic_recorder.record(
                         audio, device=config.device, max_seconds=config.max_record_seconds,
+                        start_timeout_seconds=start_timeout,
                     )
                     play_chime(chime, waking=False)
                     if not captured:
@@ -105,11 +113,13 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
             print(f"Transcript> {transcript}", flush=True)
             command = config.commands.get(normalize_activation(transcript)) or learned_commands.lookup(transcript)
             if command is None:
-                reply = pipeline.respond(
-                    transcript, spoken=speaker is not None,
+                response = pipeline.respond_to_voice(
+                    transcript, allow_follow_up=detector is not None, spoken=speaker is not None,
                     on_progress=announce_progress if speaker is not None else None,
                     learned_commands=learned_commands,
                 )
+                listen_again = announce_reply(response.text) and response.listen_again
+                continue
             else:
                 if not command.run_before_reply and not announce_reply(command.reply):
                     print("Local command canceled.", flush=True)

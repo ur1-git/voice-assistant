@@ -27,7 +27,10 @@ class EndOfSpeechRecorder:
         self.frombuffer = frombuffer
         self.silence_ms = silence_ms
 
-    def record(self, path: Path, *, device: str, max_seconds: int) -> bool:
+    def record(
+        self, path: Path, *, device: str, max_seconds: int,
+        start_timeout_seconds: int = START_TIMEOUT_SECONDS,
+    ) -> bool:
         self.model.reset_states()
         speech_started = False
         voiced_frames = 0
@@ -35,13 +38,14 @@ class EndOfSpeechRecorder:
         pending = bytearray()
         started_at = monotonic()
         deadline = started_at + max_seconds
+        start_deadline = min(deadline, started_at + start_timeout_seconds)
         with wave.open(str(path), "wb") as audio:
             audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
             try:
                 with pcm_capture(device) as stream, DefaultSelector() as selector:
                     selector.register(stream, EVENT_READ)
                     while True:
-                        cutoff = deadline if speech_started else min(deadline, started_at + START_TIMEOUT_SECONDS)
+                        cutoff = deadline if speech_started else start_deadline
                         remaining = cutoff - monotonic()
                         if remaining <= 0 or not selector.select(remaining):
                             return speech_started
