@@ -31,3 +31,14 @@ language = "en-us"
 # Used by voice --wake.
 model = "models/openwakeword/hey_jarvis_v0.1.onnx"
 threshold = 0.5
+
+# Adjust the default audio output in ten percentage point steps.
+[[commands]]
+activation = ["volume up", "turn the volume up", "turn up the volume", "raise the volume", "increase the volume"]
+codeBash = "wpctl set-volume --limit 1.0 @DEFAULT_AUDIO_SINK@ 10%+"
+reply = "Volume up."
+
+[[commands]]
+activation = ["volume down", "turn the volume down", "turn down the volume", "lower the volume", "decrease the volume"]
+codeBash = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"
+reply = "Volume down."
