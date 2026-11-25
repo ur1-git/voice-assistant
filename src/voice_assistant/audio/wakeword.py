@@ -1,14 +1,16 @@
 """Listen for a local openWakeWord model using PipeWire PCM capture."""
 from array import array
 from collections.abc import Callable
+from contextlib import closing
 import math
-import os
 from pathlib import Path
-from selectors import DefaultSelector, EVENT_READ
 import subprocess
 import wave
 
-from .pipewire import RecordingError, pcm_capture
+from .pipewire import RecordingError, pcm_frames
+
+
+WAKE_FRAME_BYTES = 2560  # 80 ms of 16 kHz, 16-bit mono PCM
 
 
 class WakeWordDetector:
@@ -35,25 +37,17 @@ class WakeWordDetector:
         except Exception as exc:
             raise ValueError(f"Could not initialize the wake-word model: {exc}") from exc
 
-    def wait(self, device: str, *, listening: Callable[[], bool] = lambda: True) -> bool:
+    def reset(self) -> None:
         self.model.reset()
-        pending = bytearray()
-        with pcm_capture(device) as stream, DefaultSelector() as selector:
-            selector.register(stream, EVENT_READ)
-            while listening():
-                if not selector.select(0.1):
-                    continue
-                chunk = os.read(stream.fileno(), 2560 - len(pending))
-                if not chunk:
-                    raise RecordingError("PipeWire stopped while listening for the wake word")
-                pending.extend(chunk)
-                if len(pending) < 2560:
-                    continue
-                samples = self.frombuffer(bytes(pending), dtype="<i2")
-                pending.clear()
-                if max(self.model.predict(samples).values()) >= self.threshold:
-                    return True
-        return False
+
+    def detected(self, frame: bytes) -> bool:
+        samples = self.frombuffer(frame, dtype="<i2")
+        return max(self.model.predict(samples).values()) >= self.threshold
+
+    def wait(self, device: str, *, listening: Callable[[], bool] = lambda: True) -> bool:
+        self.reset()
+        with closing(pcm_frames(device, WAKE_FRAME_BYTES, listening=listening)) as frames:
+            return any(self.detected(frame) for frame in frames)
 
 
 def play_chime(path: Path, *, waking: bool) -> None:

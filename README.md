@@ -78,7 +78,13 @@ Install the ONNX dependencies separately because openWakeWord 0.6.0 also declare
 
 To fetch all the default speech models together, run `./scripts/download-models all`. Each set can also be downloaded separately as shown above.
 
-Say “Hey Jarvis,” wait for the rising chime, and start speaking within five seconds. A falling chime signals that recording ended. The default pause before sending is one second. If the assistant needs a follow-up, wait for the rising chime and start speaking again within three seconds. During playback, say the wake phrase to stop speech, then say it again to start a new request once listening resumes. Ctrl+C exits while waiting for the wake phrase.
+Say “Hey Jarvis,” wait for the rising chime, and start speaking within five seconds. A falling chime signals that recording ended. The default pause before sending is one second. If the assistant needs a follow-up, wait for the rising chime and start speaking again within three seconds. Ctrl+C exits while waiting for the wake phrase.
+
+### Stop a voice request or reply
+
+Say **“stop now”** while the assistant is speaking, or end your recorded request with those words. The assistant says **“Stopped.”** A recorded request ending in “stop now” is canceled before any command or AI request. Saying it during a spoken Codex progress update cancels that turn. This works with “please stop now” too. A phrase like “stop now and open Firefox” follows the normal request flow.
+
+The wake phrase and Ctrl+C also interrupt playback. If the reply itself contains “stop now,” use one of those controls to avoid the microphone picking up the assistant’s own words. Headphones help keep playback out of the microphone.
 
 ### Build whisper.cpp inside the project
 

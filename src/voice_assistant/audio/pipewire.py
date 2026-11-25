@@ -1,6 +1,9 @@
 """Record a Whisper-compatible WAV using the desktop's PipeWire session."""
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+import os
 from pathlib import Path
+from selectors import DefaultSelector, EVENT_READ
 import signal
 import subprocess
 import wave
@@ -24,6 +27,22 @@ def pcm_capture(device: str):
         finally:
             if recorder.poll() is None:
                 recorder.kill()
+
+
+def pcm_frames(device: str, frame_bytes: int, *, listening: Callable[[], bool]) -> Iterator[bytes]:
+    pending = bytearray()
+    with pcm_capture(device) as stream, DefaultSelector() as selector:
+        selector.register(stream, EVENT_READ)
+        while listening():
+            if not selector.select(0.1):
+                continue
+            chunk = os.read(stream.fileno(), frame_bytes - len(pending))
+            if not chunk:
+                raise RecordingError("PipeWire stopped while listening")
+            pending.extend(chunk)
+            if len(pending) == frame_bytes:
+                yield bytes(pending)
+                pending.clear()
 
 
 def record_wav(path: Path, *, device: str, max_seconds: int) -> None:

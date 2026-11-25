@@ -10,6 +10,7 @@ from .agents.claude import ClaudeAgent
 from .agents.codex import CodexAgent
 from .audio.end_of_speech import START_TIMEOUT_SECONDS, EndOfSpeechRecorder
 from .audio.pipewire import RecordingError, record_wav
+from .audio.playback import is_stop_request, listen_for_interruption
 from .audio.wakeword import WakeWordDetector, play_chime
 from .core.commands import CommandError, normalize_activation
 from .core.config import VoiceConfig, load_config, load_voice_config
@@ -20,6 +21,10 @@ from .tts.kokoro import KokoroSpeaker, SpeechError
 
 
 FOLLOW_UP_START_TIMEOUT_SECONDS = 3
+
+
+class VoiceTurnStopped(Exception):
+    """The user canceled the voice turn with the reserved stop phrase."""
 
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: LearnedCommands) -> None:
@@ -36,21 +41,27 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
     if config.wake_model is not None:
         print(f"Wake model: {config.wake_model.name} (threshold {config.wake_threshold:g}).", flush=True)
 
-    def interrupt_playback(listening):
-        try:
-            return detector.wait(config.device, listening=listening)
-        except (RecordingError, OSError) as exc:
-            print(f"Playback interruption unavailable: {exc}", file=sys.stderr)
-            return False
-
     def speak(message: str) -> bool:
         if speaker is None:
             return True
+
+        interruption = None
+
+        def interrupt_playback(playing):
+            nonlocal interruption
+            try:
+                interruption = listen_for_interruption(message, config, detector, playing=playing)
+            except (RecordingError, OSError) as exc:
+                print(f"Playback interruption unavailable: {exc}", file=sys.stderr)
+            return interruption is not None
+
         try:
-            if speaker.speak(message, interrupt=interrupt_playback if detector else None):
+            if speaker.speak(message, interrupt=interrupt_playback):
                 return True
         except KeyboardInterrupt:
             pass
+        if interruption == "stop":
+            raise VoiceTurnStopped
         print("Speech stopped.", flush=True)
         return False
 
@@ -113,6 +124,8 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                 print("No speech transcribed.\n")
                 continue
             print(f"Transcript> {transcript}", flush=True)
+            if is_stop_request(transcript):
+                raise VoiceTurnStopped
             command = config.commands.get(normalize_activation(transcript)) or learned_commands.lookup(transcript)
             if command is None:
                 response = pipeline.respond_to_voice(
@@ -137,6 +150,15 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                         continue
                     reply = command.reply
             announce_reply(reply)
+        except VoiceTurnStopped:
+            print("Assistant> Stopped.\n", flush=True)
+            if speaker is not None:
+                try:
+                    speaker.speak("Stopped.", interrupt=None)
+                except KeyboardInterrupt:
+                    pass
+                except (SpeechError, OSError) as exc:
+                    print(f"Error: {exc}", file=sys.stderr)
         except (EOFError, KeyboardInterrupt):
             print()
             return
