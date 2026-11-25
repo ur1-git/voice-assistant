@@ -13,3 +13,6 @@ dist/
 
 # Downloaded speech models and voice data
 /models/
+/bin/
+/.build/
+/wakeword-training/

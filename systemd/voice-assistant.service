@@ -1,5 +1,5 @@
 [Unit]
-Description=Voice assistant with Hey Jarvis wake detection
+Description=Hands-free voice assistant
 PartOf=graphical-session.target
 Wants=pipewire.service wireplumber.service
 After=pipewire.service wireplumber.service
@@ -8,7 +8,8 @@ After=plasma-core.target
 
 [Service]
 Type=exec
-ExecStart=%h/Dev/projects/python/voice-assistant/voice-assistant
+# Enable this file by its path so %Y resolves to the project's systemd directory.
+ExecStart="%Y/../voice-assistant"
 Restart=always
 RestartSec=3s
 Environment=PYTHONUNBUFFERED=1

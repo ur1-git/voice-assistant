@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 {whisper|kokoro|wake|all}" >&2
+    exit 2
+fi
+
+project_dir=$(CDPATH= cd -P -- "$(dirname -- "$0")/.." && pwd)
+cd "$project_dir"
+
+download() (
+    destination=$1
+    url=$2
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+        printf 'Keeping %s\n' "$destination"
+        exit 0
+    fi
+
+    mkdir -p -- "$(dirname -- "$destination")"
+    partial=$(mktemp "${destination}.part.XXXXXXXX")
+    trap 'rm -f -- "$partial"' EXIT
+    printf 'Downloading %s\n' "$destination"
+    curl --fail --location --retry 2 --output "$partial" "$url"
+    if [ ! -s "$partial" ]; then
+        echo "Download was empty: $url" >&2
+        exit 1
+    fi
+    mv --no-clobber --no-target-directory -- "$partial" "$destination"
+)
+
+whisper() {
+    download models/ggml-small.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+}
+
+kokoro() {
+    release=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1
+    download models/kokoro-v1.0.onnx "$release/kokoro-v1.0.onnx"
+    download models/voices-v1.0.bin "$release/voices-v1.0.bin"
+}
+
+wake() {
+    release=https://github.com/dscripka/openWakeWord/releases/download/v0.5.1
+    for model in hey_jarvis_v0.1 embedding_model melspectrogram silero_vad; do
+        download "models/openwakeword/$model.onnx" "$release/$model.onnx"
+    done
+}
+
+case "$1" in
+    whisper) whisper ;;
+    kokoro) kokoro ;;
+    wake) wake ;;
+    all) whisper; kokoro; wake ;;
+    *) echo "Usage: $0 {whisper|kokoro|wake|all}" >&2; exit 2 ;;
+esac

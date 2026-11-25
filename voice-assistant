@@ -5,8 +5,16 @@ project_dir=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
 cd "$project_dir"
 
 if [ ! -x .venv/bin/voice-assistant ]; then
-    echo "Project launcher needs .venv/bin/voice-assistant. See Development setup in README.md." >&2
+    echo "Project launcher needs .venv/bin/voice-assistant. See Install from source in README.md." >&2
     exit 1
 fi
+
+export PATH="$project_dir/bin:$PATH"
+
+case "${1-}" in
+    doctor|ask|chat|voice|--config)
+        exec .venv/bin/voice-assistant "$@"
+        ;;
+esac
 
 exec .venv/bin/voice-assistant voice --wake --speak "$@"
