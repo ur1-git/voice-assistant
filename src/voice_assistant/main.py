@@ -1,5 +1,6 @@
 """Terminal entry points for typed and spoken requests."""
 import argparse
+from contextlib import ExitStack
 from pathlib import Path
 import shutil
 import sys
@@ -10,7 +11,7 @@ from .agents.claude import ClaudeAgent
 from .agents.codex import CodexAgent
 from .audio.end_of_speech import START_TIMEOUT_SECONDS, EndOfSpeechRecorder
 from .audio.pipewire import RecordingError, record_wav
-from .audio.playback import is_stop_request, listen_for_interruption
+from .audio.playback import InterruptionListener, VoiceInterrupted, is_stop_request
 from .audio.wakeword import WakeWordDetector, play_chime
 from .core.commands import CommandError, normalize_activation
 from .core.config import VoiceConfig, load_config, load_voice_config
@@ -21,10 +22,6 @@ from .tts.kokoro import KokoroSpeaker, SpeechError
 
 
 FOLLOW_UP_START_TIMEOUT_SECONDS = 3
-
-
-class VoiceTurnStopped(Exception):
-    """The user canceled the voice turn with the reserved stop phrase."""
 
 
 def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: LearnedCommands) -> None:
@@ -41,47 +38,65 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
     if config.wake_model is not None:
         print(f"Wake model: {config.wake_model.name} (threshold {config.wake_threshold:g}).", flush=True)
 
-    def speak(message: str) -> bool:
+    def speak(message: str, listener: InterruptionListener) -> bool:
+        listener.check()
         if speaker is None:
             return True
-
-        interruption = None
-
-        def interrupt_playback(playing):
-            nonlocal interruption
-            try:
-                interruption = listen_for_interruption(message, config, detector, playing=playing)
-            except (RecordingError, OSError) as exc:
-                print(f"Playback interruption unavailable: {exc}", file=sys.stderr)
-            return interruption is not None
-
         try:
-            if speaker.speak(message, interrupt=interrupt_playback):
-                return True
+            completed = speaker.speak(message, interrupt=lambda playing: listener.stop_playback(message, playing))
         except KeyboardInterrupt:
-            pass
-        if interruption == "stop":
-            raise VoiceTurnStopped
+            completed = False
+        listener.check()
+        if completed:
+            return True
         print("Speech stopped.", flush=True)
         return False
 
-    def announce_reply(message: str) -> bool:
+    def announce_reply(message: str, listener: InterruptionListener) -> bool:
+        listener.check()
         print(f"Assistant> {message}\n", flush=True)
-        return speak(message)
+        return speak(message, listener)
 
-    def announce_progress(message: str) -> None:
+    def announce_progress(message: str, listener: InterruptionListener) -> None:
+        listener.check()
         print(f"Progress> {message}", flush=True)
         try:
-            speak(message)
+            speak(message, listener)
         except (SpeechError, OSError) as exc:
             print(f"Progress playback failed: {exc}", file=sys.stderr)
 
-    listen_again = False
-    while True:
-        follow_up = listen_again
-        listen_again = False
+    def dispatch(transcript: str, listener: InterruptionListener) -> bool:
+        listener.check()
+        command = config.commands.get(normalize_activation(transcript)) or learned_commands.lookup(transcript)
+        if command is None:
+            response = pipeline.respond_to_voice(
+                transcript, allow_follow_up=detector is not None, spoken=speaker is not None,
+                on_progress=(lambda message: announce_progress(message, listener)) if speaker is not None else None,
+                learned_commands=learned_commands, check_interruption=listener.check,
+            )
+            return announce_reply(response.text, listener) and response.listen_again
+
+        if not command.run_before_reply and not announce_reply(command.reply, listener):
+            print("Local command canceled.", flush=True)
+            return False
+        listener.check()
+        print("Running local command.", flush=True)
         try:
-            if detector and not follow_up:
+            command.run(config.agent.working_directory, config.agent.timeout_seconds)
+        except CommandError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            announce_reply("The local command failed.", listener)
+        else:
+            if command.run_before_reply:
+                announce_reply(command.reply, listener)
+        return False
+
+    next_capture = None
+    while True:
+        activation = next_capture
+        next_capture = None
+        try:
+            if detector and activation is None:
                 print("Listening for the wake word. Press Ctrl+C to quit.", flush=True)
                 try:
                     detector.wait(config.device)
@@ -95,62 +110,51 @@ def voice_chat(pipeline: Pipeline, config: VoiceConfig, learned_commands: Learne
                 if choice:
                     continue
 
-            with TemporaryDirectory(prefix="voice-assistant-") as directory:
-                audio = Path(directory) / "request.wav"
-                chime = audio.with_name("chime.wav")
-                if detector:
-                    play_chime(chime, waking=True)
-                if automatic_recorder:
-                    print("Recording. Pause to send or press Ctrl+C to send now.", flush=True)
-                    start_timeout = FOLLOW_UP_START_TIMEOUT_SECONDS if follow_up else START_TIMEOUT_SECONDS
-                    captured = automatic_recorder.record(
-                        audio, device=config.device, max_seconds=config.max_record_seconds,
-                        start_timeout_seconds=start_timeout,
+            with ExitStack() as turn:
+                with TemporaryDirectory(prefix="voice-assistant-") as directory:
+                    audio = Path(directory) / "request.wav"
+                    chime = audio.with_name("chime.wav")
+                    if detector:
+                        play_chime(chime, waking=True)
+                    if automatic_recorder:
+                        print("Recording. Pause to send or press Ctrl+C to send now.", flush=True)
+                        start_timeout = (
+                            FOLLOW_UP_START_TIMEOUT_SECONDS if activation == "follow-up" else START_TIMEOUT_SECONDS
+                        )
+                        captured = automatic_recorder.record(
+                            audio, device=config.device, max_seconds=config.max_record_seconds,
+                            start_timeout_seconds=start_timeout,
+                        )
+                        play_chime(chime, waking=False)
+                        if not captured:
+                            print("No speech detected.\n", flush=True)
+                            continue
+                    else:
+                        print(f"Recording for up to {config.max_record_seconds}s. Press Ctrl+C to stop.", flush=True)
+                        record_wav(audio, device=config.device, max_seconds=config.max_record_seconds)
+                    listener = turn.enter_context(InterruptionListener(config, detector, automatic_recorder))
+                    print("\nTranscribing…", flush=True)
+                    transcript = transcribe(
+                        audio, model=config.model, language=config.language,
+                        timeout_seconds=config.transcription_timeout,
                     )
-                    play_chime(chime, waking=False)
-                    if not captured:
-                        print("No speech detected.\n", flush=True)
-                        continue
+                listener.check()
+                follow_up = False
+                if not transcript or transcript == "[BLANK_AUDIO]":
+                    print("No speech transcribed.\n")
                 else:
-                    print(f"Recording for up to {config.max_record_seconds}s. Press Ctrl+C to stop.", flush=True)
-                    record_wav(audio, device=config.device, max_seconds=config.max_record_seconds)
-                print("\nTranscribing…", flush=True)
-                transcript = transcribe(
-                    audio, model=config.model, language=config.language,
-                    timeout_seconds=config.transcription_timeout,
-                )
-
-            if not transcript or transcript == "[BLANK_AUDIO]":
-                print("No speech transcribed.\n")
+                    print(f"Transcript> {transcript}", flush=True)
+                    if is_stop_request(transcript):
+                        raise VoiceInterrupted("stop")
+                    follow_up = dispatch(transcript, listener)
+            listener.check()
+            if follow_up:
+                next_capture = "follow-up"
+        except VoiceInterrupted as exc:
+            if exc.reason == "wake":
+                print("Wake word detected during the current turn. Starting a new request.", flush=True)
+                next_capture = "wake"
                 continue
-            print(f"Transcript> {transcript}", flush=True)
-            if is_stop_request(transcript):
-                raise VoiceTurnStopped
-            command = config.commands.get(normalize_activation(transcript)) or learned_commands.lookup(transcript)
-            if command is None:
-                response = pipeline.respond_to_voice(
-                    transcript, allow_follow_up=detector is not None, spoken=speaker is not None,
-                    on_progress=announce_progress if speaker is not None else None,
-                    learned_commands=learned_commands,
-                )
-                listen_again = announce_reply(response.text) and response.listen_again
-                continue
-            else:
-                if not command.run_before_reply and not announce_reply(command.reply):
-                    print("Local command canceled.", flush=True)
-                    continue
-                print("Running local command.", flush=True)
-                try:
-                    command.run(config.agent.working_directory, config.agent.timeout_seconds)
-                except CommandError as exc:
-                    print(f"Error: {exc}", file=sys.stderr)
-                    reply = "The local command failed."
-                else:
-                    if not command.run_before_reply:
-                        continue
-                    reply = command.reply
-            announce_reply(reply)
-        except VoiceTurnStopped:
             print("Assistant> Stopped.\n", flush=True)
             if speaker is not None:
                 try:

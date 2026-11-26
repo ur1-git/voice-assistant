@@ -3,7 +3,10 @@ from io import StringIO
 import os
 from pathlib import Path
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
+from threading import Event
+from time import sleep
 import unittest
 from unittest.mock import MagicMock, patch
 import wave
@@ -16,6 +19,11 @@ from voice_assistant.stt.whisper_cpp import TranscriptionError
 
 
 class VoiceTests(unittest.TestCase):
+    def setUp(self):
+        capture = patch("voice_assistant.audio.playback.pcm_frames", side_effect=lambda *a, **kw: (_ for _ in ()))
+        capture.start()
+        self.addCleanup(capture.stop)
+
     def test_stop_matches_only_the_final_words(self):
         for transcript in ("stop now", "Please STOP   NOW!", "Hey Nova, stop, now…"):
             with self.subTest(transcript=transcript):
@@ -59,8 +67,9 @@ class VoiceTests(unittest.TestCase):
             config.with_name("model.bin").touch()
             config.write_text('[stt]\nmodel = "model.bin"\n', encoding="utf-8")
             stdout = StringIO()
+            playing = Event()
 
-            def ask(prompt, *, on_progress):
+            def ask(prompt, *, on_progress, check_interruption):
                 if prompt.endswith("Cancel this request"):
                     on_progress("I heard you.")
                     self.fail("The stop phrase should cancel the running turn")
@@ -68,14 +77,22 @@ class VoiceTests(unittest.TestCase):
                 return "Second request completed."
 
             def speak(message, *, interrupt):
-                return not interrupt(lambda: True) if message == "I heard you." else True
+                if message == "I heard you.":
+                    playing.set()
+                    return not interrupt(lambda: True)
+                return True
+
+            def listen(*args, listening, playing_text):
+                while listening():
+                    if playing.wait(0.01) and playing_text() == "I heard you.":
+                        return "stop"
 
             with (
                 patch("shutil.which", return_value="/fake/tool"),
                 patch("builtins.input", side_effect=["", "", "/quit"]),
                 patch("voice_assistant.main.record_wav"),
                 patch("voice_assistant.main.transcribe", side_effect=["Cancel this request", "Second request"]),
-                patch("voice_assistant.main.listen_for_interruption", return_value="stop"),
+                patch("voice_assistant.audio.playback.listen_for_interruption", side_effect=listen),
                 patch("voice_assistant.main.CodexAgent.ask", side_effect=ask),
                 patch("voice_assistant.main.KokoroSpeaker") as speaker,
                 redirect_stdout(stdout),
@@ -108,7 +125,90 @@ class VoiceTests(unittest.TestCase):
             patch("voice_assistant.audio.playback.pcm_frames", side_effect=frames),
             patch("voice_assistant.audio.playback.transcribe", side_effect=transcribe_clip),
         ):
-            self.assertEqual(listen_for_interruption("A long reply", config, wake, playing=lambda: True), "stop")
+            self.assertEqual(
+                listen_for_interruption(config, wake, None, listening=lambda: True, playing_text=lambda: "A long reply"),
+                "stop",
+            )
+
+    def test_stop_interrupts_a_silent_agent_process(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "config.toml"
+            config.write_text('[stt]\nmodel = "model.bin"\n', encoding="utf-8")
+            (root / "model.bin").touch()
+            marker = root / "running"
+            codex = root / "codex"
+            codex.write_text(
+                f'#!{sys.executable}\n'
+                'import os, time\nfrom pathlib import Path\n'
+                'Path("running").write_text(str(os.getpid()))\n'
+                'time.sleep(3)\nPath("finished").touch()\n',
+                encoding="utf-8",
+            )
+            codex.chmod(0o700)
+            stdout = StringIO()
+
+            def listen(*args, listening, playing_text):
+                while listening():
+                    if marker.is_file() and marker.read_text():
+                        self.assertEqual(playing_text(), "")
+                        return "stop"
+                    sleep(0.01)
+
+            with (
+                patch("shutil.which", return_value="/fake/tool"),
+                patch("builtins.input", side_effect=["", "/quit"]),
+                patch("voice_assistant.main.record_wav"),
+                patch("voice_assistant.main.transcribe", return_value="Start a request"),
+                patch("voice_assistant.audio.playback.listen_for_interruption", side_effect=listen),
+                patch("voice_assistant.main.KokoroSpeaker"),
+                redirect_stdout(stdout),
+            ):
+                self.assertEqual(main(
+                    ["--config", str(config), "voice", "--speak"], agent_executables={"codex": str(codex)},
+                ), 0)
+
+            self.assertIn("Assistant> Stopped.", stdout.getvalue())
+            self.assertFalse((root / "finished").exists())
+
+    def test_one_wake_during_playback_opens_a_new_recording(self):
+        with TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.write_text('[stt]\nmodel = "model.bin"\n', encoding="utf-8")
+            config.with_name("model.bin").touch()
+            playing = Event()
+
+            def listen(*args, listening, playing_text):
+                while listening():
+                    if playing.wait(0.01) and playing_text():
+                        return "wake"
+
+            def speak(message, *, interrupt):
+                playing.set()
+                return not interrupt(lambda: True)
+
+            with (
+                patch("shutil.which", return_value="/fake/tool"),
+                patch("voice_assistant.main.WakeWordDetector") as wake,
+                patch("voice_assistant.main.EndOfSpeechRecorder") as recorder,
+                patch("voice_assistant.main.play_chime") as chime,
+                patch("voice_assistant.main.transcribe", return_value="Start a request"),
+                patch("voice_assistant.main.CodexAgent.ask", return_value="A long reply."),
+                patch("voice_assistant.main.KokoroSpeaker") as speaker,
+                patch("voice_assistant.audio.playback.listen_for_interruption", side_effect=listen),
+                redirect_stdout(StringIO()),
+            ):
+                wake.return_value.wait.side_effect = [True, KeyboardInterrupt]
+                recorder.return_value.record.side_effect = [True, False]
+                speaker.return_value.speak.side_effect = speak
+                self.assertEqual(main(["--config", str(config), "voice", "--wake", "--speak"]), 0)
+
+            self.assertEqual(wake.return_value.wait.call_count, 2)
+            self.assertEqual([call.kwargs["waking"] for call in chime.call_args_list], [True, False, True, False])
+            self.assertEqual(
+                [call.kwargs["start_timeout_seconds"] for call in recorder.return_value.record.call_args_list],
+                [5, 5],
+            )
 
     def test_command_fields_accept_legacy_syntax_and_reject_ambiguity(self):
         for field, language, code in (

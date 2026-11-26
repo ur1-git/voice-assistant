@@ -13,7 +13,10 @@ class CodexAgent(Agent):
     model: str | None = None
     reasoning_effort: str | None = None
 
-    def ask(self, prompt: str, *, on_progress: Callable[[str], None] | None = None) -> str:
+    def ask(
+        self, prompt: str, *, on_progress: Callable[[str], None] | None = None,
+        check_interruption: Callable[[], None] | None = None,
+    ) -> str:
         # '-' feeds stdin; no shell invocation or command interpolation.
         if self.full_access:
             permissions = ["--dangerously-bypass-approvals-and-sandbox"]
@@ -42,9 +45,11 @@ class CodexAgent(Agent):
             args.extend(["--config", f"model_reasoning_effort={json.dumps(self.reasoning_effort)}"])
         args.append("-")
         if on_progress is None:
-            output = self.run_process(args, stdin=prompt)
+            output = self.run_process(args, stdin=prompt, check_interruption=check_interruption)
         else:
-            output = stream_codex(self, args, prompt, progress_events(on_progress))
+            output = stream_codex(
+                self, args, prompt, progress_events(on_progress), check_interruption=check_interruption,
+            )
         messages = []
         errors = []
         for line in output.splitlines():

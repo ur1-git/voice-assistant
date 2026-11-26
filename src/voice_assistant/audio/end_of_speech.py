@@ -27,11 +27,18 @@ class EndOfSpeechRecorder:
         self.frombuffer = frombuffer
         self.silence_ms = silence_ms
 
+    def reset(self) -> None:
+        self.model.reset_states()
+
+    def speech_probability(self, frame: bytes) -> float:
+        samples = self.frombuffer(frame, dtype="<i2")
+        return self.model.predict(samples, frame_size=FRAME_SAMPLES)
+
     def record(
         self, path: Path, *, device: str, max_seconds: int,
         start_timeout_seconds: int = START_TIMEOUT_SECONDS,
     ) -> bool:
-        self.model.reset_states()
+        self.reset()
         speech_started = False
         voiced_frames = 0
         quiet_ms = 0
@@ -58,8 +65,7 @@ class EndOfSpeechRecorder:
                         frame = bytes(pending)
                         pending.clear()
                         audio.writeframesraw(frame)
-                        samples = self.frombuffer(frame, dtype="<i2")
-                        if self.model.predict(samples, frame_size=FRAME_SAMPLES) >= 0.5:
+                        if self.speech_probability(frame) >= 0.5:
                             voiced_frames += 1
                             speech_started |= voiced_frames >= 2
                             quiet_ms = 0

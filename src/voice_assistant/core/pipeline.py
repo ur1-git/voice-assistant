@@ -55,10 +55,11 @@ class Pipeline:
         self, text: str, *, allow_follow_up: bool, spoken: bool = False,
         on_progress: Callable[[str], None] | None = None,
         learned_commands: LearnedCommands | None = None,
+        check_interruption: Callable[[], None] | None = None,
     ) -> VoiceReply:
         return self._respond(
             text, spoken=spoken, on_progress=on_progress, learned_commands=learned_commands,
-            allow_follow_up=allow_follow_up,
+            allow_follow_up=allow_follow_up, check_interruption=check_interruption,
         )
 
     def _respond(
@@ -66,6 +67,7 @@ class Pipeline:
         on_progress: Callable[[str], None] | None,
         learned_commands: LearnedCommands | None,
         allow_follow_up: bool = False,
+        check_interruption: Callable[[], None] | None = None,
     ) -> VoiceReply:
         text = text.strip()
         if not text:
@@ -76,10 +78,14 @@ class Pipeline:
         candidates = learned_commands.candidates(text) if learned_commands is not None else {}
         if candidates:
             prompt = f"{learned_commands.instructions(candidates)}\n\n{prompt}"
+        options = {}
+        if check_interruption is not None:
+            options["check_interruption"] = check_interruption
         if on_progress is not None and isinstance(self.agent, CodexAgent):
-            response = self.agent.ask(prompt, on_progress=on_progress)
-        else:
-            response = self.agent.ask(prompt)
+            options["on_progress"] = on_progress
+        response = self.agent.ask(prompt, **options)
+        if check_interruption is not None:
+            check_interruption()
         if candidates:
             response = learned_commands.finish(
                 text, response, candidates, self.agent.cwd, self.agent.timeout_seconds,

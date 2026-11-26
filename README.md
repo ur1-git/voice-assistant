@@ -82,9 +82,9 @@ Say “Hey Jarvis,” wait for the rising chime, and start speaking within five 
 
 ### Stop a voice request or reply
 
-Say **“stop now”** while the assistant is speaking, or end your recorded request with those words. The assistant says **“Stopped.”** A recorded request ending in “stop now” is canceled before any command or AI request. Saying it during a spoken Codex progress update cancels that turn. This works with “please stop now” too. A phrase like “stop now and open Firefox” follows the normal request flow.
+Say **“stop now”** while the assistant is speaking or working silently, or end your recorded request with those words. The assistant says **“Stopped.”** A recorded request ending in “stop now” is canceled before any command or AI request. This works with “please stop now” too. A phrase like “stop now and open Firefox” follows the normal request flow.
 
-The wake phrase and Ctrl+C also interrupt playback. If the reply itself contains “stop now,” use one of those controls to avoid the microphone picking up the assistant’s own words. Headphones help keep playback out of the microphone.
+Say the wake phrase while the assistant is busy to interrupt and open a fresh recording. Wait for the rising chime before speaking your new request. Ctrl+C also interrupts playback. Headphones help keep playback out of the microphone. If the reply itself says “stop now,” use the wake phrase or say “please stop now” so the assistant can distinguish the interruption from its own words.
 
 ### Build whisper.cpp inside the project
 
@@ -189,6 +189,21 @@ reply = "I printed the date in the terminal."
 ```
 
 Use one activation string or a list of alternatives. Set `codeBash` or `codePython` to the code to run. The complete transcript is matched after normalizing case, whitespace, and punctuation at the edges. Commands run as your Linux user from `agent.working_directory`. By default the command runs before its spoken reply. Set `runBeforeReply = false` to speak first and allow an interruption to cancel the pending command.
+
+For a voice shutdown with a ten-minute grace period, put the following entries in `config.toml`. After scheduling, say the wake phrase and then “cancel shutdown” to clear the pending power-off. [systemctl scheduling options](https://www.freedesktop.org/software/systemd/man/latest/systemctl.html#--when=)
+
+```toml
+[[commands]]
+activation = ["shutdown now", "shut down now"]
+codeBash = "/usr/bin/systemctl --no-ask-password --when=+10min poweroff"
+runBeforeReply = false
+reply = "I’ll schedule shutdown for ten minutes from now."
+
+[[commands]]
+activation = "cancel shutdown"
+codeBash = "/usr/bin/systemctl --no-ask-password --when=cancel poweroff"
+reply = "Shutdown canceled."
+```
 
 Say “Open Spotify” or “Launch Firefox” to use an installed desktop launcher. The agent can resolve an unfamiliar phrase to an installed `.desktop` entry. After a successful `gio launch`, the assistant remembers the shortcut and can handle the same phrase locally. Configured commands take precedence.
 
